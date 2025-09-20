@@ -1,0 +1,13 @@
+schema_version = "1.0.0"
+
+id = "k_blender_tools"
+version = "0.1.0"
+name = "k-blender-tools"
+tagline = "This is another extension"
+maintainer = "Kroklion"
+type = "add-on"
+tags = ["Modeling"]
+blender_version_min = "4.2.0"
+license = [
+  "SPDX:GPL-3.0-or-later",
+]

@@ -23,7 +23,8 @@ Each submodule is self‑contained and exposes its own operators, panels, and ho
 | **wp_check.py**             | Inspect and manage vertex group weights           | Sidebar > Edit Tab > WPCheck Panel |
 | **wp_copy.py**              | Sync overlapping deforming meshes (WPSync)        | Sidebar > Edit Tab > WPSync Panel |
 | **wp_mask.py**              | Weight paint masking tools                        | M (Mask From Bones), Ctrl+Numpad+ (Grow), Ctrl+Numpad- (Shrink) |
-| **select-mode-toggle.py**   | Cycle selection/masking modes with Mouse Button 5 | Edit Mode (Vertex/Edge/Face), Weight/Vertex/Texture Paint Modes |
+| **select_mode_toggle.py**   | Cycle selection/masking modes with Mouse Button 5 | Edit Mode (Vertex/Edge/Face), Weight/Vertex/Texture Paint Modes |
+| **centerline_align.py**   | Align mesh to global axis using best-fit plane | Edit Mode > Mesh > Align to Axis (Best-Fit Plane) |
 
 ---
 
@@ -182,6 +183,19 @@ This add-on has mainly been tested on Blender 4.4. It also loads in Blender 3.6 
 - Location: Edit Mode, Weight Paint, Vertex Paint, Texture Paint.
 - Category: 3D View.
 - Note: Disabled by default. Can be enabled in add‑on preferences.
+
+### `centerline_align.py`
+
+**Align Mesh to Axis (Best-Fit Plane)**
+
+- Computes a best‑fit plane from the selected vertices.
+    Rotates the mesh so the plane’s normal aligns with a chosen global axis (X, Y, or Z).
+    Optionally recenters the selection on the origin along that axis.
+- Use e.g. when an imported model is not properly aligned:
+  - Select the center loop
+  - Run the operator
+- Location: 3D View > Edit Mode > Mesh > Align to Axis (Best-Fit Plane).
+- Category: Mesh.
 
 ---
 

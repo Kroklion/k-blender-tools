@@ -60,7 +60,8 @@ def discover_submodules():
                 "name": bl_info.get("name", name),
                 "description": bl_info.get("description", "No description available."),
                 "location": bl_info.get("location", "Unknown"),
-                "category": bl_info.get("category", "Unknown")
+                "category": bl_info.get("category", "Unknown"),
+                "default-enabled": bl_info.get("default-enabled", True)
             }
         except Exception:
             log.error(f"Failed to read bl_info of module '{name}'", exc_info=True)
@@ -87,7 +88,7 @@ def discover_submodules():
             item.description = info["description"]
             item.location = info["location"]
             item.category = info["category"]
-            item.enabled = True  # default activation
+            item.enabled = info["default-enabled"]
 
 
 def module_activation_cb(item):

@@ -23,6 +23,7 @@ Each submodule is self‑contained and exposes its own operators, panels, and ho
 | **wp_check.py**             | Inspect and manage vertex group weights           | Sidebar > Edit Tab > WPCheck Panel |
 | **wp_copy.py**              | Sync overlapping deforming meshes (WPSync)        | Sidebar > Edit Tab > WPSync Panel |
 | **wp_mask.py**              | Weight paint masking tools                        | M (Mask From Bones), Ctrl+Numpad+ (Grow), Ctrl+Numpad- (Shrink) |
+| **select-mode-toggle.py**   | Cycle selection/masking modes with Mouse Button 5 | Edit Mode (Vertex/Edge/Face), Weight/Vertex/Texture Paint Modes |
 
 ---
 
@@ -170,6 +171,17 @@ This add-on has mainly been tested on Blender 4.4. It also loads in Blender 3.6 
   - Mask Shrink (`Ctrl + Numpad -`)  
 - Location: *3D View > Weight Paint Mode > Weights Menu*.  
 - Category: Paint.
+
+### `select-mode-toggle.py`
+
+**MB5 Cycle Selection Mode**
+- Use Mouse Button 5 to cycle through selection or masking modes depending on context:
+  - Edit Mode: Vertex → Edge → Face
+  - Weight/Vertex Paint: Face Mask → Vertex Mask → No Mask
+  - Texture Paint: Toggle Face Mask
+- Location: Edit Mode, Weight Paint, Vertex Paint, Texture Paint.
+- Category: 3D View.
+- Note: Disabled by default. Can be enabled in add‑on preferences.
 
 ---
 

@@ -19,14 +19,14 @@ bl_info = {
 }
 
 class MESH_OT_reset_active_shapekey_to_reference(bpy.types.Operator):
-    """Reset the active shape key's coordinates to its reference for the selected vertices.
+    """
+    Reset the active shape key's coordinates to its reference for the selected vertices.
 
     Reference is:
     - If the shape key system is in Relative mode and the active key has a 'relative_key',
       we copy from active.relative_key for the selected verts.
     - Otherwise, we copy from the first key (Basis).
 
-    This makes 'reset' behave correctly even when a key is relative to something other than Basis.
     """
 
     bl_idname = "mesh.reset_active_shapekey_to_reference"
@@ -73,70 +73,32 @@ class MESH_OT_reset_active_shapekey_to_reference(bpy.types.Operator):
                                None) if use_relative else None
         reference_key = relative_key if relative_key else basis_key
 
-        # Gather selection from Edit Mode
-        bm = bmesh.from_edit_mesh(me)
-        selected_indices = [v.index for v in bm.verts if v.select]
+        # !!! The bmesh vertices represent the active shape key !!!
+        b_mesh = bmesh.from_edit_mesh(me)
 
-        if not selected_indices:
+        selected = 0
+        applied = 0
+
+        for bmesh_vert in b_mesh.verts:
+            if bmesh_vert.select:
+                selected += 1
+                i = bmesh_vert.index
+                src = reference_key.data[i].co
+                dst = b_mesh.verts[i].co
+                if dst != src:
+                    applied += 1
+                    b_mesh.verts[i].co = src.copy()
+
+        # Refresh viewport
+        bmesh.update_edit_mesh(me, loop_triangles=False, destructive=False)
+
+        if selected == 0:
             self.report(
                 {'WARNING'}, "No selected vertices. Select some vertices in Edit Mode and try again.")
             return {'CANCELLED'}
 
-        # Sanity checks
-        nv = len(me.vertices)
-        if not (len(active_key.data) == len(reference_key.data) == nv):
-            self.report(
-                {'ERROR'}, "Vertex count mismatch between mesh and shape keys.")
-            return {'CANCELLED'}
-
-        # Debug header
-        log.debug(f"Object: {obj.name}")
-        log.debug(f"Mesh verts: {nv}")
-        log.debug(f"Active key: {active_key.name}, Index: {obj.active_shape_key_index}")
-        log.debug(f"System use_relative: {use_relative}")
-        log.debug(f"Reference key: {reference_key.name}, {'(relative to active)' if relative_key else '(Basis)'}")
-        log.debug(f"Active value: {getattr(active_key, 'value', None)}, Active muted: {getattr(active_key, 'mute', None)}")
-        log.debug(f"Show only active (object): {getattr(obj, 'show_only_shape_key', None)}")
-        log.debug(f"Use shape key edit mode (object): {getattr(obj, 'use_shape_key_edit_mode', None)}")
-        log.debug(f"Selected verts count: {len(selected_indices)}, sample: {selected_indices[:20]}, {'...' if len(selected_indices) > 20 else ''}")
-
-        # Apply: copy reference coords into the active key for each selected vertex
-        # Note: This sets absolute coords, zeroing the delta relative to the reference.
-        changed = 0
-        sample_diffs = []
-        
-        mode = context.object.mode
-        bpy.ops.object.mode_set(mode='OBJECT')
-        
-        for i in selected_indices:
-            src = reference_key.data[i].co
-            dst = active_key.data[i].co
-            if len(sample_diffs) < 10:
-                # store a tiny sample of coordinates and deltas for inspection
-                sample_diffs.append(src.copy())
-                sample_diffs.append(dst.copy())
-                sample_diffs.append((i, (dst - src).length))
-            if dst != src:
-                active_key.data[i].co = src.copy()
-                changed += 1
-                
-        bpy.ops.object.mode_set(mode=mode)
-
-        log.debug(f"Changed verts: {changed}/{len(selected_indices)}")
-        if sample_diffs:
-            # Print first few before/after magnitudes (distance to reference before write)
-            log.debug(f"Sample pre-reset deltas (lengths): {sample_diffs}")
-
-        # Refresh viewport
-        me.update()
-        bmesh.update_edit_mesh(me, loop_triangles=False, destructive=False)
-
-        # Extra hints if nothing seemed to change
-        if changed == 0:
-            log.debug("No coordinate differences found to overwrite; verts might already match the reference.")
-
         self.report(
-            {'INFO'}, f"Reset {len(selected_indices)} vertices on '{active_key.name}' to '{reference_key.name}'.")
+            {'INFO'}, f"Reset {applied} vertices on '{active_key.name}' to '{reference_key.name}'.")
         return {'FINISHED'}
 
 

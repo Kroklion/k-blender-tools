@@ -1,6 +1,6 @@
-# WPEdit Extension
+# k-blender-tools
 
-**WPEdit Extension** is a modular Blender add‑on designed to streamline rigging, weight painting, and mesh editing workflows.  
+**k-blender-tools** is a modular Blender add‑on designed to streamline rigging, weight painting, and mesh editing workflows.  
 It provides a flexible extension system where submodules can be enabled or disabled individually in the add‑on preferences.  
 Each submodule is self‑contained and exposes its own operators, panels, and hotkeys.
 
@@ -15,7 +15,7 @@ Each submodule is self‑contained and exposes its own operators, panels, and ho
 | **cursor_rotation_snap.py** | Snap cursor/active with rotation                  | 3D View > Object > Snap Menu |
 | **ebone_select.py**         | Select/deselect parent/child bones                | Alt + Numpad + / Alt+Shift+Numpad+ / Alt+Numpad- / Alt+Shift+Numpad- |
 | **ebone_slide.py**          | Slide edit bone endpoints                         | Shift + V (Edit Armature Menu) |
-| **meshedit.py**             | Mesh edit utilities (zero X, center X, merge preview) | Vertex Menu / Merge Menu |
+| **meshedit.py**             | Mesh edit utilities (zero X, center X, merge preview, merge coincident edges) | Vertex Menu / Merge Menu |
 | **shape_tools.py**          | Reset active shape key to reference               | Sidebar > Shape Keys / Vertex Menu |
 | **to_rigify.py** (Experimental) | Map imported rigs to Rigify metarigs          | Sidebar > Rigify Tab |
 | **vgroup_show_hide.py**     | Show/Hide/Solo vertex groups                      | Properties > Object Data > Vertex Groups Panel |
@@ -109,14 +109,15 @@ This add-on has mainly been tested on Blender 4.4. It also loads in Blender 3.6 
 
 ### `meshedit.py`
 **Mesh Edit Utilities**  
-- Use 
 - Operators:  
   - Zero X Selected Vertices  
   - Center Selected X in Edit Mode  
-  - Merge by Distance Preview  
+  - Merge by Distance Preview
+  - Merge Coincident Edges – merge only selected edges that are coincident. Useful for imports of file formats that only support UV island mesh connectivity. Unlike Blenders *Merge By Distance* it will avoid collapsing whole faces or creating non-manifold geometry.
+
 - Location:  
   - *3D View > Edit Mode (Mesh) > Vertex Menu*  
-  - *3D View > Edit Mode (Mesh) > Merge Menu*  
+  - *3D View > Edit Mode (Mesh) > Merge Menu* or **M** hotkey
 - Category: Mesh.
 
 ### `shape_tools.py`

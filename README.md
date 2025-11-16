@@ -16,10 +16,10 @@ Each submodule is self‑contained and exposes its own operators, panels, and ho
 | **ebone_select.py**         | Select/deselect parent/child bones                | Alt + Numpad + / Alt+Shift+Numpad+ / Alt+Numpad- / Alt+Shift+Numpad- |
 | **ebone_slide.py**          | Slide edit bone endpoints                         | Shift + V (Edit Armature Menu) |
 | **meshedit.py**             | Mesh edit utilities (zero X, center X, merge preview, merge coincident edges) | Vertex Menu / Merge Menu |
-| **shape_tools.py**          | Reset active shape key to reference               | Sidebar > Shape Keys / Vertex Menu |
+| **shape_tools.py**          | Tools related to shape keys                       | Properties Editor > Object Data Properties (Mesh) > Shape Keys > 'Shape Key Specials' dropdown |
 | **to_rigify.py** (Experimental) | Map imported rigs to Rigify metarigs          | Sidebar > Rigify Tab |
 | **vgroup_show_hide.py**     | Show/Hide/Solo vertex groups                      | Properties > Object Data > Vertex Groups Panel |
-| **weights_active_to_selected.py** | Copy active vertex weights to selected     | Vertex Menu |
+| **weights_active_to_selected.py** | Copy active vertex weights to selected      | Vertex Menu |
 | **wp_check.py**             | Inspect and manage vertex group weights           | Sidebar > Edit Tab > WPCheck Panel |
 | **wp_copy.py**              | Sync overlapping deforming meshes (WPSync)        | Sidebar > Edit Tab > WPSync Panel |
 | **wp_mask.py**              | Weight paint masking tools                        | M (Mask From Bones), Ctrl+Numpad+ (Grow), Ctrl+Numpad- (Shrink) |
@@ -122,10 +122,12 @@ This add-on has mainly been tested on Blender 4.4. It also loads in Blender 3.6 
 
 ### `shape_tools.py`
 **Reset Active Shape Key to Reference**  
-- Resets active shape key to its reference (relative key or Basis) for selected vertices.  
+- Provides tools for working with shape keys in Edit Mode:
+  - Reset the active shape key to match its reference (Basis or relative key) for selected vertices.
+  - Select vertices that differ from the reference shape.
+  - Reduce current selection to only vertices that differ from the reference.
 - Location:  
-  - *3D View > Sidebar (N) > Shape Keys*  
-  - *3D View > Edit Mode (Mesh) > Vertex Menu*  
+  - *Properties Editor > Object Data Properties (Mesh) > Shape Keys > 'Shape Key Specials' dropdown*  
 - Category: Mesh.
 
 ### `to_rigify.py` (Experimental)

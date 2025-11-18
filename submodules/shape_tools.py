@@ -32,7 +32,7 @@ class MESH_OT_reset_active_shapekey_to_reference(bpy.types.Operator):
     """
 
     bl_idname = "mesh.reset_active_shapekey_to_reference"
-    bl_label = "Reset Active Shape Key selection to Reference"
+    bl_label = "Reset Selection to Reference"
     bl_description = "Reset the active shape key to its reference (relative key or Basis) for selected vertices"
     bl_options = {'REGISTER', 'UNDO'}
 
@@ -51,7 +51,7 @@ class MESH_OT_reset_active_shapekey_to_reference(bpy.types.Operator):
             return False
 
         # Allow running whenever a non-Basis key is active
-        return obj.active_shape_key_index != 0
+        return obj.active_shape_key_index != 0 and keys.use_relative
 
     def execute(self, context):
         obj = context.active_object
@@ -62,6 +62,11 @@ class MESH_OT_reset_active_shapekey_to_reference(bpy.types.Operator):
             self.report({'ERROR'}, "Object has no shape keys.")
             return {'CANCELLED'}
 
+        if not keys.use_relative:
+            self.report(
+                {'ERROR'}, "Absolute shape keys are not supported by this operator.")
+            return {'CANCELLED'}
+
         basis_key = keys.key_blocks[0]
         active_key = obj.active_shape_key
 
@@ -70,9 +75,7 @@ class MESH_OT_reset_active_shapekey_to_reference(bpy.types.Operator):
             return {'CANCELLED'}
 
         # Determine the correct reference to copy from
-        use_relative = bool(getattr(keys, "use_relative", True))
-        relative_key = getattr(active_key, "relative_key",
-                               None) if use_relative else None
+        relative_key = getattr(active_key, "relative_key", None)
         reference_key = relative_key if relative_key else basis_key
 
         # !!! The bmesh vertices represent the active shape key !!!
@@ -108,7 +111,7 @@ class MESH_OT_select_shapekey_differences(bpy.types.Operator):
     """Select only vertices that differ from the base shape"""
 
     bl_idname = "mesh.select_shapekey_differences"
-    bl_label = "Select Shape Key Differences"
+    bl_label = "Select Differences to Reference"
     bl_description = "Select vertices of the active shape key that differ from its reference (Basis or relative key)"
     bl_options = {'REGISTER', 'UNDO'}
 
@@ -126,7 +129,7 @@ class MESH_OT_select_shapekey_differences(bpy.types.Operator):
             return False
 
         # Allow running whenever a non-Basis key is active
-        return obj.active_shape_key_index != 0
+        return obj.active_shape_key_index != 0 and keys.use_relative
 
     def execute(self, context):
         # core logic: deselect all, then select only differing verts
@@ -141,6 +144,11 @@ class MESH_OT_select_shapekey_differences(bpy.types.Operator):
             self.report({'ERROR'}, "Object has no shape keys.")
             return {'CANCELLED'}
 
+        if not keys.use_relative:
+            self.report(
+                {'ERROR'}, "Absolute shape keys are not supported by this operator.")
+            return {'CANCELLED'}
+
         basis_key = keys.key_blocks[0]
         active_key = obj.active_shape_key
 
@@ -150,9 +158,7 @@ class MESH_OT_select_shapekey_differences(bpy.types.Operator):
             return {'CANCELLED'}
 
         # Determine reference key
-        use_relative = bool(getattr(keys, "use_relative", True))
-        relative_key = getattr(active_key, "relative_key",
-                               None) if use_relative else None
+        relative_key = getattr(active_key, "relative_key", None)
         reference_key = relative_key if relative_key else basis_key
 
         b_mesh = bmesh.from_edit_mesh(me)
@@ -164,7 +170,7 @@ class MESH_OT_select_shapekey_differences(bpy.types.Operator):
             for v in b_mesh.verts:
                 src = reference_key.data[v.index].co
                 dst = v.co
-                if dst != src:
+                if dst != src and not v.hide:
                     changed_count += 1
                     v.select_set(True)
         else:
@@ -194,11 +200,86 @@ class MESH_OT_select_shapekey_differences(bpy.types.Operator):
 class MESH_OT_reduce_selection_to_shapekey_differences(MESH_OT_select_shapekey_differences):
     """Reduce current selection to only vertices that differ from base (refine selection)"""
     bl_idname = "mesh.reduce_selection_to_shapekey_differences"
-    bl_label = "Reduce Selection to Shape Key Differences"
+    bl_label = "Reduce Selection to Differences"
     bl_description = "Refine the current selection by deselecting vertices that are not affected by the Shape Key."
 
     def execute(self, context):
         return self._select_differences(context, reduce=True)
+
+
+class MESH_OT_transfer_selected_to_basis(bpy.types.Operator):
+    """
+    Transfer selected vertices from the active shape key into the Basis.
+    """
+
+    bl_idname = "mesh.transfer_selected_to_basis"
+    bl_label = "Selected Verts to Basis"
+    bl_description = "Copy selected vertices from the active shape key into the Basis shape key"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    @classmethod
+    def poll(cls, context):
+        obj = context.active_object
+        if not obj or obj.type != 'MESH':
+            return False
+        if context.mode != 'EDIT_MESH':
+            return False
+        me = obj.data
+        keys = getattr(me, "shape_keys", None)
+
+        return bool(keys and keys.key_blocks and obj.active_shape_key_index != 0 and keys.use_relative)
+
+    def execute(self, context):
+        obj = context.active_object
+        me = obj.data
+        keys = me.shape_keys
+
+        if not keys or not keys.key_blocks:
+            self.report({'ERROR'}, "Object has no shape keys.")
+            return {'CANCELLED'}
+
+        if not keys.use_relative:
+            self.report(
+                {'ERROR'}, "Absolute shape keys are not supported by this operator.")
+            return {'CANCELLED'}
+
+        basis_key = keys.key_blocks[0]
+        active_key = obj.active_shape_key
+
+        if active_key == basis_key:
+            self.report(
+                {'WARNING'}, "Active key is Basis; nothing to transfer.")
+            return {'CANCELLED'}
+
+        bm = bmesh.from_edit_mesh(me)
+
+        # Get bmesh layers for Basis and Active by index
+        basis_layer = bm.verts.layers.shape[0]
+        active_layer = bm.verts.layers.shape[obj.active_shape_key_index]
+
+        selected = 0
+        transferred = 0
+
+        for v in bm.verts:
+            if v.select:
+                selected += 1
+                src = v[active_layer]
+                dst = v[basis_layer]
+                if dst != src:
+                    v[basis_layer] = src.copy()
+                    transferred += 1
+
+        bmesh.update_edit_mesh(me, loop_triangles=False, destructive=False)
+
+        if selected == 0:
+            self.report(
+                {'WARNING'}, "No selected vertices. Select some vertices in Edit Mode and try again.")
+            return {'CANCELLED'}
+
+        self.report(
+            {'INFO'}, f"Transferred {transferred} vertices from '{active_key.name}' into Basis.")
+        return {'FINISHED'}
+
 
 
 # Add entries to the Shape Key Specials menu
@@ -215,12 +296,16 @@ def shapekey_specials_menu(self, context):
     self.layout.operator(
         MESH_OT_reduce_selection_to_shapekey_differences.bl_idname,
         icon='SELECT_SUBTRACT')
+    self.layout.operator(
+        MESH_OT_transfer_selected_to_basis.bl_idname,
+        icon='TRIA_DOWN')
 
 
 classes = (
     MESH_OT_reset_active_shapekey_to_reference,
     MESH_OT_reduce_selection_to_shapekey_differences,
     MESH_OT_select_shapekey_differences,
+    MESH_OT_transfer_selected_to_basis,
 )
 
 

@@ -281,6 +281,109 @@ class MESH_OT_transfer_selected_to_basis(bpy.types.Operator):
         return {'FINISHED'}
 
 
+class MESH_OT_copy_selected_to_new_shapekey(bpy.types.Operator):
+    """Copy selected verts from active shape key into a new shape key"""
+    bl_idname = "mesh.copy_selected_to_new_shapekey"
+    bl_label = "Copy Selected to New Shape Key"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    @classmethod
+    def poll(cls, context):
+        obj = context.active_object
+        if not obj or obj.type != 'MESH':
+            return False
+        if context.mode != 'EDIT_MESH':
+            return False
+        keys = getattr(obj.data, "shape_keys", None)
+        return bool(keys and keys.key_blocks and obj.active_shape_key_index != 0)
+
+    def execute(self, context):
+        return self._execute(context)
+
+    def _execute(self, context, do_copy=True):
+        obj = context.active_object
+        me = obj.data
+        keys = me.shape_keys
+
+        # Guard against absolute shape keys
+        if not keys.use_relative:
+            self.report({'ERROR'}, "Absolute shape keys are not supported.")
+            return {'CANCELLED'}
+
+        # Remember old active key and its relative
+        src_key = obj.active_shape_key
+        src_name = src_key.name
+        rel_name = src_key.relative_key.name if src_key.relative_key else keys.key_blocks[
+            0].name
+
+        # Switch to Object Mode
+        bpy.ops.object.mode_set(mode='OBJECT')
+
+        # Create new key (Blender auto-increments name if needed)
+        new_key = obj.shape_key_add(name=src_name)
+
+        # Make the new key active
+        obj.active_shape_key_index = keys.key_blocks.find(new_key.name)
+
+        # Switch back to Edit Mode
+        bpy.ops.object.mode_set(mode='EDIT')
+
+        # Refresh bmesh
+        bm = bmesh.from_edit_mesh(me)
+
+        # Resolve layers by name
+        src_index = keys.key_blocks.find(src_name)
+        rel_index = keys.key_blocks.find(rel_name)
+
+        src_layer = bm.verts.layers.shape[src_index]
+        rel_layer = bm.verts.layers.shape[rel_index]
+
+        copied = 0
+        for v in bm.verts:
+            if v.select:
+                v.co = v[src_layer]
+                copied += 1
+                if not do_copy:
+                    v[src_layer] = v[rel_layer]
+            else:
+                v.co = v[rel_layer]
+
+        if copied == 0:
+            # Switch to Object Mode to safely remove
+            bpy.ops.object.mode_set(mode='OBJECT')
+
+            # Remove it
+            bpy.ops.object.shape_key_remove(all=False)
+            bpy.ops.object.mode_set(mode='EDIT')
+
+            self.report(
+                {'WARNING'}, "No selected vertices. Select some vertices in Edit Mode and try again.")
+            return {'CANCELLED'}
+
+        bmesh.update_edit_mesh(me, loop_triangles=False, destructive=False)
+
+        if do_copy:
+            self.report(
+                {'INFO'},
+                f"Copied {copied} selected vertices into new shape key '{new_key.name}'."
+            )
+        else:
+            self.report(
+                {'INFO'},
+                f"Split {copied} selected vertices into new shape key '{new_key.name}'."
+            )
+        return {'FINISHED'}
+
+
+class MESH_OT_move_selected_to_new_shapekey(MESH_OT_copy_selected_to_new_shapekey):
+    """Move selected verts from active shape key into a new shape key"""
+    bl_idname = "mesh.move_selected_to_new_shapekey"
+    bl_label = "Split Selected to New Shape Key"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    def execute(self, context):
+        return self._execute(context, do_copy=False)
+
 
 # Add entries to the Shape Key Specials menu
 def shapekey_specials_menu(self, context):
@@ -299,6 +402,12 @@ def shapekey_specials_menu(self, context):
     self.layout.operator(
         MESH_OT_transfer_selected_to_basis.bl_idname,
         icon='TRIA_DOWN')
+    self.layout.operator(
+        MESH_OT_copy_selected_to_new_shapekey.bl_idname,
+        icon='DUPLICATE')
+    self.layout.operator(
+        MESH_OT_move_selected_to_new_shapekey.bl_idname,
+        icon='SCULPTMODE_HLT')
 
 
 classes = (
@@ -306,6 +415,8 @@ classes = (
     MESH_OT_reduce_selection_to_shapekey_differences,
     MESH_OT_select_shapekey_differences,
     MESH_OT_transfer_selected_to_basis,
+    MESH_OT_move_selected_to_new_shapekey,
+    MESH_OT_copy_selected_to_new_shapekey,
 )
 
 
@@ -313,12 +424,10 @@ def register():
     for cls in classes:
         bpy.utils.register_class(cls)
     bpy.types.MESH_MT_shape_key_context_menu.append(shapekey_specials_menu)
-    # bpy.types.VIEW3D_MT_edit_mesh.append(menu_func)
 
 
 def unregister():
     bpy.types.MESH_MT_shape_key_context_menu.remove(shapekey_specials_menu)
-    # bpy.types.VIEW3D_MT_edit_mesh.remove(menu_func)
     for cls in reversed(classes):
         bpy.utils.unregister_class(cls)
 

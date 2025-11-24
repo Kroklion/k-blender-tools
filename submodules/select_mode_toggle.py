@@ -87,6 +87,12 @@ def register():
         kmi = km.keymap_items.new("mesh.cycle_select_mode", 'BUTTON5MOUSE', 'PRESS')
         addon_keymaps.append((km, kmi))
 
+        # UV Editor
+        km = kc.keymaps.new(name='UV Editor', space_type='EMPTY')
+        kmi = km.keymap_items.new(
+            "mesh.cycle_select_mode", 'BUTTON5MOUSE', 'PRESS')
+        addon_keymaps.append((km, kmi))
+
 
 def unregister():
     for km, kmi in addon_keymaps:

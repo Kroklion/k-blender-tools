@@ -1,6 +1,5 @@
 import bpy
 import bmesh
-import math
 from mathutils import Matrix, Quaternion, Vector
 
 bl_info = {

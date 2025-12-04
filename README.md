@@ -13,6 +13,7 @@ Each submodule is self‑contained and exposes its own operators, panels, and ho
 | **bone_mesh_sync.py**       | Sync bones to mesh via reference vertices         | 3D View > Object Menu > Bone Sync |
 | **ebone_rotate.py**         | Rotate edit bones around head                     | 3D View > Sidebar > Edit Tab > Rotate Edit Bones |
 | **cursor_rotation_snap.py** | Snap cursor/active with rotation                  | 3D View > Object > Snap Menu |
+| **cursor_presets.py**       |	Save and restore 3D Cursor transforms	            | Sidebar > View Tab > 3D Cursor Panel |
 | **ebone_select.py**         | Select/deselect parent/child bones                | Alt + Numpad + / Alt+Shift+Numpad+ / Alt+Numpad- / Alt+Shift+Numpad- |
 | **ebone_slide.py**          | Slide edit bone endpoints                         | Shift + V (Edit Armature Menu) |
 | **meshedit.py**             | Mesh edit utilities (zero X, center X, merge preview, merge coincident edges) | Vertex Menu / Merge Menu |
@@ -87,6 +88,19 @@ This add-on has mainly been tested on Blender 4.4. It also loads in Blender 3.6 
 - Orient cursor –Y axis towards active element.  
 - Snap active object/bone to cursor with rotation.  
 - Location: *3D View > Object > Snap Menu*.  
+- Category: 3D View.
+
+
+### `cursor_presets.py`
+**Cursor Presets**
+- Save and restore 3D Cursor transforms (location and rotation).
+- Manage multiple presets via a list in the 3D Cursor panel.
+- Operators:
+    - Add Cursor Preset – store current cursor transform.
+    - Remove Cursor Preset – delete selected preset.
+    - Apply Cursor Preset – restore cursor to stored transform.
+- Optionally enable Auto Apply to automatically apply the preset when the selection changes.
+- Location: 3D View > Sidebar (N) > View Tab > 3D Cursor Panel.
 - Category: 3D View.
 
 ### `ebone_select.py`

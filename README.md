@@ -160,14 +160,14 @@ This add-on has mainly been tested on Blender 4.4. It also loads in Blender 3.6 
 
 ### `weights_active_to_selected.py`
 **Copy Active Vertex Weights to Selected**  
-- Copies deform vertex group weights from the active vertex to all selected vertices.  
+- Copies deform vertex group weights from the active vertex to all selected vertices. Useful for solid parts on a deformed mesh.
 - Location: *3D View > Edit Mode (Mesh) > Vertex Menu*.  
 - Category: Mesh.
 
 ### `wp_check.py`
 **WPCheck – Vertex Group Weight Inspector**  
 - Inspect and manage vertex group weights of selected vertices.  
-- Features: filter groups, select/deselect, delete/zero, apply math operations.  
+- Features: filter groups, select/deselect, delete/zero, apply math operations, move weight to bone, fill missing weights.
 - Location: *3D View > Sidebar (N) > Edit Tab > WPCheck Panel*.  
 - Available in Edit Mode and Weight Paint Mode.  
 - Category: Mesh.
@@ -178,7 +178,7 @@ This add-on has mainly been tested on Blender 4.4. It also loads in Blender 3.6 
 - Tools to assign unique vertex IDs, mark source/destination proximity groups, and transfer weights.  
 - Location: *3D View > Sidebar (N) > Edit Tab > WPSync Panel*.  
 - Category: Rigging.
-- ⚠️ Partially incomplete.
+- ⚠️ Incomplete.
 
 ### `wp_mask.py`
 **Weight Paint Mask Tools**  

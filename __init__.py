@@ -154,7 +154,7 @@ def unregister():
 
     # Reverse order is often safer
     for item in reversed(WPAddonPreferences.get_instance().submodules):
-        if item.enabled:  # startup, don't attempt to deactivate here
+        if item.enabled:
             switch_module(item, True)
 
     bpy.utils.unregister_class(WPAddonPreferences)

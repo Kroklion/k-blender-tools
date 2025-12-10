@@ -26,6 +26,7 @@ Each submodule is self‑contained and exposes its own operators, panels, and ho
 | **wp_mask.py**              | Weight paint masking tools                        | M (Mask From Bones), Ctrl+Numpad+ (Grow), Ctrl+Numpad- (Shrink) |
 | **select_mode_toggle.py**   | Cycle selection/masking modes with Mouse Button 5 | Edit Mode (Vertex/Edge/Face), Weight/Vertex/Texture Paint Modes |
 | **centerline_align.py**   | Align mesh to global axis using best-fit plane | Edit Mode > Mesh > Align to Axis (Best-Fit Plane) |
+| **shape_key_edit_hint.py** | Show on‑screen hint when editing non‑Basis shape keys | 3D View (Edit/Sculpt Modes) |
 
 ---
 
@@ -213,6 +214,16 @@ This add-on has mainly been tested on Blender 4.4. It also loads in Blender 3.6 
   - Run the operator
 - Location: 3D View > Edit Mode > Mesh > Align to Axis (Best-Fit Plane).
 - Category: Mesh.
+
+### `shape_key_edit_hint.py`
+**Shape Key Edit Hint**  
+- Displays a large, prominent text overlay in the 3D View when a non‑Basis shape key is active.  
+- Works in **Edit Mode** and **Sculpt Mode**.  
+- Uses Blender’s theme colors for consistency with the UI.  
+- Helps prevent accidental edits to shape keys instead of the base mesh.  
+- Location: *3D View (Edit Mode / Sculpt Mode)*.  
+- Category: 3D View.  
+- Disabled by default (can be enabled in add‑on preferences). 
 
 ---
 

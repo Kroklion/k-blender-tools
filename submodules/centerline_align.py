@@ -9,8 +9,8 @@ bl_info = {
     "blender": (3, 0, 0),
     "location": "View3D > Edit Mode > Mesh > Align to Axis (Best-Fit Plane)",
     "description": (
-        "Computes a best-fit plane from the selected vertices and rotates the mesh "
-        "so that the plane's normal aligns with a chosen global axis (X, Y, or Z). "
+        "Computes a best-fit plane from the selected vertices and rotates the mesh\n"
+        "so that the plane's normal aligns with a chosen global axis (X, Y, or Z).\n"
         "Optionally recenters the selection on the origin along that axis."
     ),
     "category": "Mesh",

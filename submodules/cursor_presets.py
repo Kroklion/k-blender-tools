@@ -7,8 +7,8 @@ bl_info = {
     "blender": (3, 0, 0),
     "location": "3D View > Sidebar (N) > View Tab > 3D Cursor Panel",
     "description": (
-        "Save and restore 3D Cursor transforms. "
-        "Allows storing multiple presets of cursor location and rotation, "
+        "Save and restore 3D Cursor transforms.\n"
+        "Allows storing multiple presets of cursor location and rotation,\n"
         "and applying them later. Includes auto-apply option when switching presets."
     ),
     "warning": "",

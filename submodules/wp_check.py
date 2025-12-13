@@ -1,3 +1,4 @@
+from typing import Any
 import bpy
 import bmesh
 
@@ -40,21 +41,6 @@ from bpy.types import (
 from .. import log
 
 
-def vertex_active(obj):
-    b_mesh = None
-    if obj.mode == 'EDIT':
-        b_mesh = bmesh.from_edit_mesh(obj.data)
-    else:
-        log.error("Not in edit mode")
-        return -1
-
-    for elem in reversed(b_mesh.select_history):
-        if isinstance(elem, bmesh.types.BMVert):
-            return elem.index
-    else:
-        return -1
-
-
 def format_weight(value):
     if value == 0:
         return "0"
@@ -68,6 +54,25 @@ def get_armature_from_mod(mesh_obj):
     for mod in mesh_obj.modifiers:
         if mod.type == 'ARMATURE':
             return mod.object
+
+
+def toggle_depsgraph_handler(handler_fn, enable: bool):
+    """
+    Add or remove a depsgraph_update_post handler.
+    """
+
+    handlers = bpy.app.handlers.depsgraph_update_post
+
+    if enable:
+        if handler_fn not in handlers:
+            handlers.append(handler_fn)
+    else:
+        if handler_fn in handlers:
+            handlers.remove(handler_fn)
+
+
+# Global, so it isn't affected by Blenders undo, as is update_selection_status().
+evaluation_valid = False
 
 
 class WPCheckBoneListItem(PropertyGroup):
@@ -86,12 +91,6 @@ class WPCheckListItem(PropertyGroup):
         name="Max Value", description="Maximum weight value that was found in the group", default="-")
 
 
-def filter_property_changed(self, context):
-    if context.scene.wp_check_props.evaluation_valid:
-        # rerun evaluate
-        bpy.ops.object.wpcheck_evaluate()
-
-
 class PG_WPCheckProperties(PropertyGroup):
     """WPCheck's properties."""
     list: CollectionProperty(type=WPCheckListItem)
@@ -104,13 +103,11 @@ class PG_WPCheckProperties(PropertyGroup):
         name="Show 0",
         description="Also show groups with zero influence",
         default=False,
-        update=filter_property_changed
     )
     only_deform: BoolProperty(
         name="Only Deform",
         description="Only show groups with associated armature bones",
         default=True,
-        update=filter_property_changed
     )
     
     operand: FloatProperty(
@@ -136,15 +133,40 @@ class PG_WPCheckProperties(PropertyGroup):
         default=False
     )
 
+    bone_move_mode: EnumProperty(
+        name="Mode",
+        description="How to apply weights when moving to destination group",
+        items=[
+            ('ADD', "Add", "Add source weight to destination"),
+            ('REPLACE', "Replace", "Replace destination weight with source weight"),
+        ],
+        default='ADD')
+
     # Values determining evaluation to be hidden
-    evaluation_valid: BoolProperty(default=False)
-    last_active_vert: IntProperty(default=0)
-    last_verts_count: IntProperty(default=0)
-    last_groups_selected_count: IntProperty(default=0)
+    # evaluation_valid: BoolProperty(default=False)
+
+    # ignore changes
     last_operand: FloatProperty(default=0)
     last_operation: StringProperty(default="")
+    last_show_deform_box: BoolProperty()
+
     last_index: IntProperty(default=-1)
     last_deform_index: IntProperty(default=-1)
+    last_bone_move_mode: StringProperty(default="")
+    last_selected_vgroup: IntProperty(default=-1)
+
+    last_groups_selected_count: IntProperty(default=0)
+    last_selection_checksum: StringProperty(default='-1')
+
+    # These trigger re-evaluate
+    last_only_deform: BoolProperty(default=False)
+    last_include_zero: BoolProperty(default=False)
+
+    last_mode: StringProperty(default="")
+
+    # to restore on next eval
+    last_highlighted_vgroup_name: StringProperty(default="")
+    last_highlighted_bone_name: StringProperty(default="")
 
 class WPCHECK_UL_List(UIList):
     def draw_item(self, context, layout, data, item,
@@ -206,6 +228,7 @@ class WPCheckPanel(Panel):
     bl_category = "Edit"
 
     def draw(self, context):
+        global evaluation_valid
         props = context.scene.wp_check_props
         layout = self.layout
         obj = context.active_object
@@ -229,7 +252,7 @@ class WPCheckPanel(Panel):
                     icon='GROUP_VERTEX')
 
         # If evaluation succeeded, show the list + actions
-        if props.evaluation_valid:
+        if evaluation_valid:
             # Vertex group list
             layout.template_list(
                 "WPCHECK_UL_List",
@@ -265,13 +288,15 @@ class WPCheckPanel(Panel):
                           icon="TRIA_DOWN" if props.show_deform_box else "TRIA_RIGHT", emboss=False)
 
             if props.show_deform_box:
-                dest_box.enabled = props.evaluation_valid  # enabled when eval valid
                 dest_box.template_list(
                     "WPCHECK_DEFORM_UL_List",  # reuse UIList layout or define new if you prefer
                     "DeformBones",
                     props, "deform_list",
                     props, "deform_index",
                 )
+
+                # Transfer mode dropdown
+                dest_box.prop(props, "bone_move_mode")
 
                 # Move weights operator
                 row = dest_box.row(align=True)
@@ -291,38 +316,83 @@ class WPCheckPanel(Panel):
             return False
 
 
+def selected_vertices_checksum(obj):
+    """
+    Returns a fast, simple checksum of selected vertex indices.
+    Works in Edit mode (bmesh) and Weight Paint mode (object data).
+    """
+
+    if obj.mode == 'EDIT':
+        bm = bmesh.from_edit_mesh(obj.data)
+        verts = (v.index for v in bm.verts if v.select)
+
+    elif obj.mode == 'WEIGHT_PAINT':
+        mesh = obj.data
+        verts = (v.index for v in mesh.vertices if v.select)
+
+    else:
+        # Unsupported mode
+        return -1
+
+    checksum = 0
+
+    for idx in verts:
+        checksum = ((checksum * 33) ^ idx) & 0xFFFFFFFFFFFFFFFF
+
+    return checksum
+
+
 class WPCheckEvaluateButton(Operator):
     ''' Scans selected vertices and lists the assigned vertex groups '''
     bl_idname = "object.wpcheck_evaluate"
     bl_label = "Evaluate weights of selected verts"
+    bl_options = {'INTERNAL'}
 
     def execute(self, context):
+        global evaluation_valid
         props = context.scene.wp_check_props
-        props.evaluation_valid = False
+
+        toggle_depsgraph_handler(update_selection_status, False)
+        evaluation_valid = False
 
         obj = bpy.context.active_object
         if not obj or not obj.type == 'MESH':
             log.warning("No active object or not of type mesh")
             return {'CANCELLED'}
         
+        # Sync to obj (expensive)
+        if obj.mode == 'EDIT':
+            bpy.ops.object.mode_set(mode='OBJECT')
+            bpy.ops.object.mode_set(mode='EDIT')
+            # update_edit_mesh is not enough, newly added vgroups will be "undead":
+            # presemt on vertices but missing in vgroups list
+            # bmesh.update_edit_mesh(obj.data)
+
         mode = obj.mode
+        props.last_mode = mode
+
+        checksum = selected_vertices_checksum(obj)
+
+        props.last_selection_checksum = str(checksum)
         
         # populate selection data as found when triggering 'Evaluate'
-        bpy.ops.object.mode_set(mode='EDIT')
-        props.last_verts_count = obj.data.total_vert_sel
-        props.last_active_vert = vertex_active(obj)
+        # user selections
         props.last_operand = props.operand
         props.last_operation = props.operation
-           
-        # we need to switch from Edit mode to Object mode so the selection gets updated
-        bpy.ops.object.mode_set(mode='OBJECT')
-        
+
+        props.last_only_deform = props.only_deform
+        props.last_include_zero = props.include_zero
+        props.last_bone_move_mode = props.bone_move_mode
+        props.last_selected_vgroup = obj.vertex_groups.active_index
+
+
         props.last_groups_selected_count = 0
         
         # build dictionary of all vgroups - key = index, value = name
         vgroups = {}
         for vgroup in obj.vertex_groups:
             vgroups[vgroup.index] = vgroup.name
+        log.info(f"Total vgroups: {len(vgroups)}")
 
         # set of deform bones
         deform_bones = set()
@@ -331,7 +401,6 @@ class WPCheckEvaluateButton(Operator):
             if not link:
                 log.warning("No armature assigned???")
                 self.report({'WARNING'}, "No armature assigned???")
-                bpy.ops.object.mode_set(mode=mode)
                 return {'CANCELLED'}
             armature = link.data
             for bone in armature.bones:
@@ -342,12 +411,11 @@ class WPCheckEvaluateButton(Operator):
         if not selected_verts:
             log.warning("No vertices selected")
             self.report({'WARNING'}, "No vertices selected")
-            bpy.ops.object.mode_set(mode=mode)
             return {'CANCELLED'}
 
         log.debug(f"Vertices selected: {len(selected_verts)}")
 
-        used_vgroups = {}  # resulting groups
+        used_vgroups: dict[Any, Any] = {}  # resulting groups
         for v in selected_verts:
             for group in v.groups:
                 used_vgroups[group.group] = vgroups[group.group]
@@ -356,7 +424,6 @@ class WPCheckEvaluateButton(Operator):
         if not used_vgroups:
             log.warning("No vertex groups on vertices")
             self.report({'WARNING'}, "No vertex groups on vertices")
-            bpy.ops.object.mode_set(mode=mode)
             return {'CANCELLED'}
 
         # store maximum influence
@@ -370,19 +437,16 @@ class WPCheckEvaluateButton(Operator):
 
         # copy to prop list
         prop_list = props.list
+        last_selected_name = prop_list[props.index].name if len(
+            prop_list) > props.index else None
+
         props.index = 0
-        props.last_index = 0
-        props.deform_index = 0
-        props.last_deform_index = 0
-
         prev_selection = {item.name: item.selected for item in prop_list}
+
         prop_list.clear()
-
-        include_zero_weights = props.include_zero
-
         i = 0
         for index, name in used_vgroups.items():
-            if not include_zero_weights and influences[index] == 0.0:
+            if not props.include_zero and influences[index] == 0.0:
                 continue
             if props.only_deform and not name in deform_bones:
                 continue
@@ -393,29 +457,47 @@ class WPCheckEvaluateButton(Operator):
             prop_list[i].maximum_value = format_weight(influences[index])
             # restore previous selection state if group name matches
             prop_list[i].selected = prev_selection.get(name, False)
+
+            # restore list index from name
+            if name == last_selected_name:
+                props.index = i
             i += 1
 
+        props.last_index = props.index
+
         # Populate destination deform bones list
+        last_deform_name = props.deform_list[props.deform_index].name if len(
+            props.deform_list) > props.deform_index else None
+
+
         props.deform_list.clear()
         props.deform_index = 0
+
         j = 0
         if deform_bones:
             for bname in sorted(deform_bones):
                 item = props.deform_list.add()
                 item.name = bname
                 item.bone_index = j
+
+                # restore list index from name
+                if bname == last_deform_name:
+                    props.deform_index = j
+
                 j += 1
 
-        props.evaluation_valid = True
+        props.last_deform_index = props.deform_index
+
+        # populate selection count
+        props.last_groups_selected_count = 0
+        for item in props.list:
+            if item.selected:
+                props.last_groups_selected_count += 1
+
+        evaluation_valid = True
         log.debug(f"Eval complete.")
 
-        # back to whatever mode we were in
-        bpy.ops.object.mode_set(mode=mode)
-        
-        # after mode switch so it's not triggered by that
-        if update_selection_status not in bpy.app.handlers.depsgraph_update_post:
-            bpy.app.handlers.depsgraph_update_post.append(
-                update_selection_status)
+        toggle_depsgraph_handler(update_selection_status, True)
         
         # since we make no modification in the scene, no undo entry needed
         return {'CANCELLED'}
@@ -425,10 +507,11 @@ class WPCheckSelectAllButton(bpy.types.Operator):
     """Selects all vertex groups in the list"""
     bl_idname = 'object.wpcheck_select_all'
     bl_label = 'WPCheckSelectAll'
+    bl_options: set[str] = {'INTERNAL'}
 
     @classmethod
     def poll(cls, context):
-        evaluation_valid = context.scene.wp_check_props.evaluation_valid
+        global evaluation_valid
         return context.object is not None and context.object.type == 'MESH' and evaluation_valid
 
     def execute(self, context):
@@ -440,17 +523,21 @@ class WPCheckSelectAllButton(bpy.types.Operator):
         for listitem in prop_list:
             listitem.selected = True
 
-        return {'CANCELLED'}
+        context.scene.wp_check_props.last_groups_selected_count = len(
+            prop_list)
+
+        return {'FINISHED'}
 
 
 class WPCheckDeselectAllButton(bpy.types.Operator):
     """Deselects all vertex groups in the list"""
     bl_idname = 'object.wpcheck_deselect_all'
     bl_label = 'WPCheckDeselectAll'
+    bl_options = {'INTERNAL'}
 
     @classmethod
     def poll(cls, context):
-        evaluation_valid = context.scene.wp_check_props.evaluation_valid
+        global evaluation_valid
         return context.object is not None and context.object.type == 'MESH' and evaluation_valid
 
     def execute(self, context):
@@ -462,17 +549,20 @@ class WPCheckDeselectAllButton(bpy.types.Operator):
         for listitem in prop_list:
             listitem.selected = False
 
-        return {'CANCELLED'}
+        context.scene.wp_check_props.last_groups_selected_count = 0
+
+        return {'FINISHED'}
 
 
 class WPCheckDeleteButton(bpy.types.Operator):
     """Deletes checked vertex groups from all selected vertices"""
     bl_idname = 'object.wpcheck_delete'
     bl_label = 'Delete'
+    bl_options = {'REGISTER', 'UNDO'}
 
     @classmethod
     def poll(cls, context):
-        evaluation_valid = context.scene.wp_check_props.evaluation_valid
+        global evaluation_valid
         if not evaluation_valid:
             return False
 
@@ -518,10 +608,11 @@ class WPCheckZeroButton(bpy.types.Operator):
     """Sets checked vertex group weights from all selected vertices to zero"""
     bl_idname = 'object.wpcheck_zero'
     bl_label = 'Delete'
+    bl_options = {'REGISTER', 'UNDO'}
 
     @classmethod
     def poll(cls, context):
-        evaluation_valid = context.scene.wp_check_props.evaluation_valid
+        global evaluation_valid
         if not evaluation_valid:
             return False
 
@@ -562,8 +653,10 @@ class WPCheckZeroButton(bpy.types.Operator):
     
 
 class WPCheckMathButton(Operator):
+    ''' Executes the selected math operation. '''
     bl_idname = "object.wpcheck_math"
     bl_label = "Apply Operation to Weights"
+    bl_options = {'REGISTER', 'UNDO'}
 
     def execute(self, context):
         props = context.scene.wp_check_props
@@ -623,12 +716,14 @@ class WPCheckMoveToSelectedButton(Operator):
     """Transfer weights from selected source group (above) to selected deform bone."""
     bl_idname = "object.wpcheck_move_to_selected"
     bl_label = "Move to Deform Bone"
+    bl_options = {'REGISTER', 'UNDO'}
 
     @classmethod
     def poll(cls, context):
+        global evaluation_valid
         props = context.scene.wp_check_props
         obj = context.object
-        if not (obj and obj.type == 'MESH' and props.evaluation_valid):
+        if not (obj and obj.type == 'MESH' and evaluation_valid):
             return False
         # require a valid source selection
         return len(props.list) > 0 and 0 <= props.index < len(props.list) and len(props.deform_list) > 0
@@ -696,10 +791,10 @@ class WPCheckMoveToSelectedButton(Operator):
                     w_dst = g.weight
                     break
 
-            # write destination: add and clamp
-            # new_dst = max(0.0, min(1.0, w_dst + w_src))
-            # overwrite
-            new_dst = w_src
+            if props.bone_move_mode == 'ADD':
+                new_dst = max(0.0, min(1.0, w_dst + w_src))
+            else:  # REPLACE
+                new_dst = w_src
 
             dest_vg.add([v.index], new_dst, 'REPLACE')
 
@@ -716,12 +811,14 @@ class WPCheckFillMissingButton(bpy.types.Operator):
     """Fill missing weights up to 1.0 into the selected deform bone group"""
     bl_idname = "object.wpcheck_fill_missing"
     bl_label = "Fill Missing Weights"
+    bl_options = {'REGISTER', 'UNDO'}
 
     @classmethod
     def poll(cls, context):
+        global evaluation_valid
         props = context.scene.wp_check_props
         obj = context.object
-        if not (obj and obj.type == 'MESH' and props.evaluation_valid):
+        if not (obj and obj.type == 'MESH' and evaluation_valid):
             return False
         # require at least one source group selected and a destination deform bone selected
         has_sources = any(item.selected for item in props.list)
@@ -784,57 +881,89 @@ class WPCheckFillMissingButton(bpy.types.Operator):
 
 # Callback from Blender, active while evaluation valid
 def update_selection_status(scene, depsgraph):
+    global evaluation_valid
     props = scene.wp_check_props
     obj = bpy.context.active_object
     
-    if obj and obj.type == 'MESH' and obj.mode == 'EDIT':
-        mdata = obj.data
+    # This is called when the user changed something.
+    # If it was a list index, list selection etc. in our menu we should not invalidate.
+    # If the filters were changed, rerun evaluate.
+    # Else, we need to check if the selection changed which can be heavy on CPU.
+    # If selection changed, set evaluation_valid false, hiding the WPCheck panel.
 
-        number_verts = mdata.total_vert_sel
-        new_active_vert = vertex_active(obj)
+    # The above are determined by comparing to the state that was recorded at evaluation
+    # or previous update_selection_status.
 
-        # Compare with stored values
-        if props.last_active_vert != new_active_vert or props.last_verts_count != number_verts:
-            # Selection has changed, so update the properties
-            props.evaluation_valid = False
-            props.last_active_vert = new_active_vert
-            props.last_verts_count = number_verts
-    elif obj and obj.type == 'MESH' and obj.mode == 'WEIGHT_PAINT':
-        # don't abort if the user chooses groups
-        # count selected
-        new_selected = 0
-        for item in props.list:
-            if item.selected:
-                new_selected += 1
-        log.debug(
-            f'prev selected: {props.last_groups_selected_count}, new selected: {new_selected}')
-        
-        if props.last_groups_selected_count != new_selected:
-            props.last_groups_selected_count = new_selected
+    # user choosing groups
+    new_selected = 0
+    for item in props.list:
+        if item.selected:
+            new_selected += 1
+
+    keep = False
+    filter = False
+
+    if obj and props.last_mode != obj.mode:
+        # WEIGHT_PAINT -> EDIT works, but other way around seems to insert intermediate OBJECT mode
+        if obj.mode == 'EDIT' or obj.mode == 'WEIGHT_PAINT':
+            props.last_mode = obj.mode
+            keep = True
         else:
-            if props.last_operand != props.operand:
-                props.last_operand = props.operand
-            else:
-                if props.last_operation != props.operation:
-                    props.last_operation = props.operation
-                else:
-                    if props.last_index != props.index:
-                        props.last_index = props.index
-                    else:
-                        if props.last_deform_index != props.deform_index:
-                            props.last_deform_index = props.deform_index
-                        else:
-                            props.evaluation_valid = False
-            
-            
-    else:
-        props.evaluation_valid = False
-    log.info(f"Result: {props.evaluation_valid}")
+            evaluation_valid = False
+            toggle_depsgraph_handler(update_selection_status, False)
+            return
 
-    if props.evaluation_valid == False:
+    if props.last_groups_selected_count != new_selected:
+        props.last_groups_selected_count = new_selected
+        keep = True
+
+    if props.last_operand != props.operand:
+        props.last_operand = props.operand
+        keep = True
+
+    if props.last_operation != props.operation:
+        props.last_operation = props.operation
+        keep = True
+
+    if props.last_index != props.index:
+        props.last_index = props.index
+        keep = True
+
+    if props.last_deform_index != props.deform_index:
+        props.last_deform_index = props.deform_index
+        keep = True
+
+    if props.last_bone_move_mode != props.bone_move_mode:
+        props.last_bone_move_mode = props.bone_move_mode
+        keep = True
+
+    if props.last_selected_vgroup != obj.vertex_groups.active_index:
+        props.last_selected_vgroup = obj.vertex_groups.active_index
+        keep = True
+
+    if props.last_only_deform != props.only_deform:
+        filter = True
+
+    if props.last_include_zero != props.include_zero:
+        filter = True
+
+    if not keep:
+        log.info("Checking selection change")
+        checksum = selected_vertices_checksum(obj)
+        if props.last_selection_checksum == str(checksum):
+            keep = True
+
+    if not keep:
+        evaluation_valid = False
+    log.info(f"Result: {evaluation_valid}")
+
+    if evaluation_valid == False:
         # remove this update to save performance. It's added back when 'Evaluate' is triggered
-        if update_selection_status in bpy.app.handlers.depsgraph_update_post:
-            bpy.app.handlers.depsgraph_update_post.remove(update_selection_status)
+        toggle_depsgraph_handler(update_selection_status, False)
+
+    if filter:
+        toggle_depsgraph_handler(update_selection_status, False)
+        bpy.ops.object.wpcheck_evaluate()
 
 
 classes = [
@@ -856,9 +985,13 @@ classes = [
 
 
 def register():
+    global evaluation_valid
+    evaluation_valid = False
+
     for cls in classes:
         bpy.utils.register_class(cls)
     bpy.types.Scene.wp_check_props = PointerProperty(type=PG_WPCheckProperties)
+
 
 def unregister():
     for cls in reversed(classes):
@@ -866,6 +999,5 @@ def unregister():
     
     del bpy.types.Scene.wp_check_props
     
-    if update_selection_status in bpy.app.handlers.depsgraph_update_post:
-        bpy.app.handlers.depsgraph_update_post.remove(update_selection_status)
+    toggle_depsgraph_handler(update_selection_status, False)
 

@@ -233,18 +233,14 @@ class WPCheckPanel(Panel):
         layout = self.layout
         obj = context.active_object
 
-        # Only enable UI if we have a mesh with an armature modifier
-        has_mesh_and_arm = (
-            obj
-            and obj.type == 'MESH'
-            and get_armature_from_mod(obj) is not None
-        )
+        # Only show deform filter and bones if armature present
+        has_armature = get_armature_from_mod(obj) is not None
 
         # Top row: include_zero + only_deform side by side
         row = layout.row(align=True)
-        row.active = has_mesh_and_arm
         row.prop(props, "include_zero")
-        row.prop(props, "only_deform")
+        if has_armature:
+            row.prop(props, "only_deform")
 
         # Evaluate button
         row.operator(WPCheckEvaluateButton.bl_idname,
@@ -283,28 +279,29 @@ class WPCheckPanel(Panel):
             box.operator("object.wpcheck_math", text="Apply")
 
             # Collapsible destination deform bones box
-            dest_box = layout.box()
-            dest_box.prop(props, "show_deform_box",
-                          icon="TRIA_DOWN" if props.show_deform_box else "TRIA_RIGHT", emboss=False)
+            if has_armature:
+                dest_box = layout.box()
+                dest_box.prop(props, "show_deform_box",
+                              icon="TRIA_DOWN" if props.show_deform_box else "TRIA_RIGHT", emboss=False)
 
-            if props.show_deform_box:
-                dest_box.template_list(
-                    "WPCHECK_DEFORM_UL_List",  # reuse UIList layout or define new if you prefer
-                    "DeformBones",
-                    props, "deform_list",
-                    props, "deform_index",
-                )
+                if props.show_deform_box:
+                    dest_box.template_list(
+                        "WPCHECK_DEFORM_UL_List",  # reuse UIList layout or define new if you prefer
+                        "DeformBones",
+                        props, "deform_list",
+                        props, "deform_index",
+                    )
 
-                # Transfer mode dropdown
-                dest_box.prop(props, "bone_move_mode")
+                    # Transfer mode dropdown
+                    dest_box.prop(props, "bone_move_mode")
 
-                # Move weights operator
-                row = dest_box.row(align=True)
-                row.operator("object.wpcheck_move_to_selected",
-                             icon='ARROW_LEFTRIGHT')
-                row = dest_box.row(align=True)
-                row.operator("object.wpcheck_fill_missing",
-                             icon='ADD')
+                    # Move weights operator
+                    row = dest_box.row(align=True)
+                    row.operator("object.wpcheck_move_to_selected",
+                                 icon='ARROW_LEFTRIGHT')
+                    row = dest_box.row(align=True)
+                    row.operator("object.wpcheck_fill_missing",
+                                 icon='ADD')
 
 
     @classmethod
@@ -396,15 +393,14 @@ class WPCheckEvaluateButton(Operator):
 
         # set of deform bones
         deform_bones = set()
-        if props.only_deform:
-            link = get_armature_from_mod(obj)
-            if not link:
-                log.warning("No armature assigned???")
-                self.report({'WARNING'}, "No armature assigned???")
-                return {'CANCELLED'}
+        link = get_armature_from_mod(obj)
+        if link:
             armature = link.data
             for bone in armature.bones:
-                deform_bones.add(bone.name)
+                if bone.use_deform:
+                    deform_bones.add(bone.name)
+        else:
+            log.info("No armature on obj")
 
         selected_verts = [v for v in obj.data.vertices if v.select]
 
@@ -448,7 +444,7 @@ class WPCheckEvaluateButton(Operator):
         for index, name in used_vgroups.items():
             if not props.include_zero and influences[index] == 0.0:
                 continue
-            if props.only_deform and not name in deform_bones:
+            if (props.only_deform and not name in deform_bones) and link:
                 continue
 
             prop_list.add()

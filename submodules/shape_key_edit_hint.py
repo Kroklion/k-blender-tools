@@ -20,33 +20,51 @@ bl_info = {
 handler = None
 
 
-def draw_callback_px(self, context):
-    obj = context.object
-    if not obj or obj.type != 'MESH':
+def draw_callback_px():
+    # Get a fresh context every time
+    context = bpy.context
+
+    # In some situations (startup, background) this can still be restricted,
+    # so use getattr to be safe.
+    obj = getattr(context, "object", None)
+    if not obj or getattr(obj, "type", None) != 'MESH':
         return
 
     # Only show in Sculpt or Edit mode
-    if obj.mode not in {'EDIT', 'SCULPT'}:
+    mode = getattr(obj, "mode", None)
+    if mode not in {'EDIT', 'SCULPT'}:
         return
 
     # Only show if a non-Basis shape key is active
-    if obj.active_shape_key and obj.active_shape_key_index != 0:
-        # Get theme color for text (use the 3D View theme settings)
-        theme = context.preferences.themes['Default']
-        text_color = theme.view_3d.space.text  # returns (r,g,b,a)
+    active_key = getattr(obj, "active_shape_key", None)
+    active_index = getattr(obj, "active_shape_key_index", None)
+    if active_key and active_index not in (None, 0):
+        # Try to use theme color; fall back if unavailable
+        prefs = getattr(context, "preferences", None)
+        text_color = (1.0, 0.2, 0.2, 0.8)  # default fallback
+
+        if prefs:
+            try:
+                theme = prefs.themes['Default']
+                text_color = theme.view_3d.space.text
+            except Exception:
+                pass
 
         font_id = 0
         blf.size(font_id, 40)
-        blf.color(font_id, *text_color, 0.8)  # apply theme color
+        # text_color is (r, g, b, a); ensure it’s 4 components
+        if len(text_color) == 3:
+            text_color = (*text_color, 0.5)
+        blf.color(font_id, *text_color)
         blf.position(font_id, 80, 50, 0)
-        blf.draw(font_id, f"🞕 {obj.active_shape_key.name}")
+        blf.draw(font_id, f"🞕 {active_key.name}")
 
 
 def register():
     global handler
     if handler is None:
         handler = bpy.types.SpaceView3D.draw_handler_add(
-            draw_callback_px, (None, bpy.context), 'WINDOW', 'POST_PIXEL'
+            draw_callback_px, (), 'WINDOW', 'POST_PIXEL'
         )
 
 

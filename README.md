@@ -141,6 +141,11 @@ This add-on has mainly been tested on Blender 4.4. It also loads in Blender 3.6 
   - Reset the active shape key to match its reference (Basis or relative key) for selected vertices.
   - Select vertices that differ from the reference shape.
   - Reduce current selection to only vertices that differ from the reference.
+  - Transfer selected vertices from the active shape key into the Basis.
+  - Move selected verts from active shape key into a new shape key.
+  - Copy selected verts from active shape key into a new shape key.
+  - Copy selected vertices from the active shape key into the only muted shape key. Mute is used as a workaround to indicate the target shape key.
+
 - Location:  
   - *Properties Editor > Object Data Properties (Mesh) > Shape Keys > 'Shape Key Specials' dropdown*  
 - Category: Mesh.

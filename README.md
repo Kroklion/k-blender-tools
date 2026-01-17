@@ -25,8 +25,9 @@ Each submodule is self‑contained and exposes its own operators, panels, and ho
 | **wp_copy.py**              | Sync overlapping deforming meshes (WPSync)        | Sidebar > Edit Tab > WPSync Panel |
 | **wp_mask.py**              | Weight paint masking tools                        | M (Mask From Bones), Ctrl+Numpad+ (Grow), Ctrl+Numpad- (Shrink) |
 | **select_mode_toggle.py**   | Cycle selection/masking modes with Mouse Button 5 | Edit Mode (Vertex/Edge/Face), Weight/Vertex/Texture Paint Modes |
-| **centerline_align.py**   | Align mesh to global axis using best-fit plane | Edit Mode > Mesh > Align to Axis (Best-Fit Plane) |
-| **shape_key_edit_hint.py** | Show on‑screen hint when editing non‑Basis shape keys | 3D View (Edit/Sculpt Modes) |
+| **centerline_align.py**     | Align mesh to global axis using best-fit plane    | Edit Mode > Mesh > Align to Axis (Best-Fit Plane) |
+| **shape_key_edit_hint.py**  | Show on‑screen hint when editing non‑Basis shape keys | 3D View (Edit/Sculpt Modes) |
+| **resymmetrize.py**         | Resymmetrizes vertex positions using topology     | Edit Mode > Mesh > Topology Resymmetrize |
 
 ---
 
@@ -229,6 +230,36 @@ This add-on has mainly been tested on Blender 4.4. It also loads in Blender 3.6 
 - Location: *3D View (Edit Mode / Sculpt Mode)*.  
 - Category: 3D View.  
 - Disabled by default (can be enabled in add‑on preferences). 
+
+### `resymmetrize.py`
+**Topological Resymmetrization**  
+- Restores symmetry on meshes with mostly symmetrical topology by inferring vertex pairs through topological connections. No more fear of destroying symmetry on a progressed model.
+- Compared to Blender Built-Ins:
+  - **Symmetrize** - Deletes and replaces geometry with a mirrored copy. Deadly if there is already asymmetric data on it such as UVs.
+  - **Snap to Symmetry** - Only works reliably when each vertex is still closest to its true symmetric counterpart.
+- Works in **Edit Mode**.
+- Internally, the algorithm runs in three stages:
+  - Classifies vertices by position into source side, center loop, and target side (configurable in the operator panel).
+  - Detects initial faces and propagate symmetry from them, creating pair relations
+  - Copies mirrored coordinates from the source side to the target side.
+- Separate mesh parts (e.g., eyeballs) can be symmetrized by identifying a matching face and linking corresponding edge vertices with temporary helper edges in the correct order.
+- Limitations:
+  - Non-manifold geometry cannot be symmetrized.
+  - A center loop is optional (e.g., a cube can still be symmetrized), but if present it must be detected accurately. Vertices must lie exactly on the symmetry axis or within the provided epsilon.
+  - Asymmetries are detected by comparing edge counts per vertex. If they differ, the affected face cannot be used for propagation and the vertex will not receive a mirrored position.
+  - Overlapping separate parts must be moved apart so they can be classified cleanly as source or target. They can be moved back afterward.
+- Debug options:  
+  Select elements from different stages of the algorithm. Can be used to highlight asymmetries without applying the symmetry. 
+- Respects hidden geometry:
+  - Hidden non‑manifold regions on the target side are excluded (you can alternately hide non-manifold parts to eventually symmetrize everything)
+  - Hidden target‑side faces are skipped for performance.
+  - Hidden elements on the target side can be used to intentionally exclude asymmetrical areas.
+- Optionally apply symmetry **only to selected vertices**.
+- Performance:<br>
+  On a CPU with a ~3360 single‑thread score (popular benchmark site), a 100k‑face mesh (with half the faces on the target side being processed) completes in roughly **1.3 seconds**.<br>
+  The first prototype required **1 minute** for a 10k‑face mesh.
+- Location: *3D View > Mesh > Topology Resymmetrize*.  
+- Category: Mesh.  
 
 ---
 

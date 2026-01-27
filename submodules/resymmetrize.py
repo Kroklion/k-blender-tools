@@ -177,6 +177,9 @@ class MESH_OT_topology_resymmetrize(bpy.types.Operator):
         sym_v = toposym.get_count(TopoSymType.VERTEX_SYMMETRIZED)
         targets = toposym.get_count(TopoSymType.VERTEX_TARGET)
 
+        if self.debug != 'NORMAL':
+            bpy.ops.mesh.reveal(select=False)
+
         warn = False
 
         msg_parts = []

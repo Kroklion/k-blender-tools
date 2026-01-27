@@ -125,7 +125,6 @@ class TopoSym:
                         face_info = next_face
         
     # @timed
-
     def _classify_vertices(self, eps: float):
         # If a shape key is active, we need to use the Basis key for classification.
         # Build lists of types of vertices.
@@ -203,12 +202,12 @@ class TopoSym:
                     
         elif type == TopoSymType.FACE_UNREACHABLE:
             for face in self._face_infos:
-                if face.is_target and not face.is_symmetrized:
+                if face.is_target and (not face.is_symmetrized) and (not face.face.hide):
                     face.face.select_set(True)
                     
         elif type == TopoSymType.VERTEX_ASYMMETRIC:
             for vertex in self._vertex_infos:
-                if vertex.is_asymmetric:
+                if vertex.is_asymmetric and not vertex.vert.hide:
                     vertex.vert.select_set(True)
 
         elif type == TopoSymType.VERTEX_CENTER:
@@ -256,7 +255,7 @@ class TopoSym:
         elif type == TopoSymType.VERTEX_ASYMMETRIC:
             count = 0
             for vertex in self._vertex_infos:
-                if vertex.is_asymmetric:
+                if vertex.is_asymmetric and not vertex.vert.hide:
                     count += 1
             return count
 
@@ -313,7 +312,7 @@ class TopoSym:
         elif type == TopoSymType.FACE_UNREACHABLE:
             count = 0
             for face in self._face_infos:
-                if face.is_target and not face.is_symmetrized:
+                if face.is_target and (not face.is_symmetrized) and (not face.face.hide):
                     count += 1
             return count
 
@@ -497,7 +496,6 @@ class FaceInfo:
 
         # hidden is not going to contribute
         elif hidden_count > 0 or face.hide:
-            print(f"Face {face.index} hidden")
             self.is_hidden = True
             self.is_target = False
             return
@@ -741,8 +739,6 @@ class FaceInfo:
 
             tgt_v0_idx = 0
             src_v0_idx = 0
-
-            # TODO check if all verts are already symmetrized? Shortcut
 
             for i in range(0, v_count):
                 if src_loop[i] == source_edge_v0:

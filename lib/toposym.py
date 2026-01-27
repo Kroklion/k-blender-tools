@@ -36,6 +36,23 @@ class TopoSymType(Enum):
 class TopoSym:
     def __init__(self, mesh: BMesh, mirror_axis_index=0, mirror_axis_sign=1,\
         eps: float = 1e-5, shape_key_index: int = -1, limit_steps: int=-1) -> None:
+        """
+        Initializes the topological resymmetrization process. Symmetry partners are determined.
+
+        Parameters:
+        :param mesh:              The Blender BMesh object to be analyzed and resymmetrized.
+        :param mirror_axis_index: The index of the local axis used as the symmetry axis 
+                                    (0 for X, 1 for Y, 2 for Z).
+        :param mirror_axis_sign:  The direction/side sign (1 or -1) indicating the 
+                                    source and target sides relative to the axis.
+        :param eps:               Center Epsilon; the tolerance value used to classify vertices 
+                                    as being on the center line.
+        :param shape_key_index:   An index > 0 indicates an active shape key. In this case
+                                    the Basis needs to be used for classification.
+        :param limit_steps:       The maximum number of face-mapping iterations to perform. 
+                                    If set to -1, the algorithm runs until all reachable faces 
+                                    are processed. Debugging purpose.
+        """
 
         self._mirror_axis_index = mirror_axis_index
         self._mirror_axis_sign = mirror_axis_sign
@@ -150,7 +167,11 @@ class TopoSym:
     # V  V
 
     # @timed
-    def apply_symmetry(self, only_selected):
+    def apply_symmetry(self, only_selected=False):
+        '''
+        Symmetrizes target side with source. Since v.co is set 
+        it means the current shape key is updated if any.
+        '''
         if only_selected:
             for info in self._target_infos:
                 if info.partner and info.get_is_target() and not info.is_asymmetric:
@@ -166,6 +187,11 @@ class TopoSym:
                     target.co[self._mirror_axis_index] *= -1
                     
     def get_symmetry_mapping(self) -> dict[int, int]:
+        '''
+        Returns a dictionary containing the symmetry mapping.
+        key: source vertex index
+        value: target vertex index
+        '''
         dict = {}
         for v_info in self._target_infos:
             if v_info.is_symmetrized and not v_info.is_asymmetric and v_info.partner is not None:
@@ -174,6 +200,11 @@ class TopoSym:
         return dict
 
     def select_in_bmesh(self, type: TopoSymType, deselect: bool = True):
+        '''
+        Selects the specified geometry classification.
+        If 'deselect' is true, the current selection is cleared.
+        '''
+
         # should be faster than looping through everything
         # Assumes that the bmesh is from the current edit mode object...
         if deselect:
@@ -244,6 +275,10 @@ class TopoSym:
     
     
     def get_count(self, type: TopoSymType) -> int:
+        '''
+        Returns the count of geometry found of 
+        the specified classification.
+        '''
 
         # --- Vertex types ---
         if type == TopoSymType.VERTEX_CENTER_ERRORS:

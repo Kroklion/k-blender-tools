@@ -216,9 +216,9 @@ class MESH_OT_transfer_selected_to_basis(bpy.types.Operator):
     Transfer selected vertices from the active shape key into the Basis.
     """
 
-    bl_idname = "mesh.transfer_selected_to_basis"
-    bl_label = "Selected Verts to Basis"
-    bl_description = "Copy selected vertices from the active shape key into the Basis shape key"
+    bl_idname = "mesh.transfer_selected_to_basis_only"
+    bl_label = "Selected Verts to Basis Only"
+    bl_description = "Copy selected vertices from the active shape key into the Basis shape key. Other shape keys keep the old basis shape!"
     bl_options = {'REGISTER', 'UNDO'}
 
     @classmethod
@@ -283,6 +283,108 @@ class MESH_OT_transfer_selected_to_basis(bpy.types.Operator):
         self.report(
             {'INFO'}, f"Transferred {transferred} vertices from '{active_key.name}' into Basis.")
         return {'FINISHED'}
+
+
+class MESH_OT_transfer_selected_to_basis_propagate(bpy.types.Operator):
+    """
+    Transfer selected vertices from the active shape key into the Basis,
+    and apply the resulting delta to all other shape keys.
+    """
+
+    bl_idname = "mesh.transfer_selected_to_basis_propagate"
+    bl_label = "Selected Verts to Basis (Propagate)"
+    bl_description = (
+        "Copy selected vertices from the active shape key into the Basis, "
+        "and adapt all other shape keys."
+    )
+    bl_options = {'REGISTER', 'UNDO'}
+
+    @classmethod
+    def poll(cls, context):
+        obj = context.active_object
+        if not obj or obj.type != 'MESH':
+            return False
+        if context.mode != 'EDIT_MESH':
+            return False
+
+        me = obj.data
+        keys = getattr(me, "shape_keys", None)
+
+        return bool(keys and keys.key_blocks and obj.active_shape_key_index != 0 and keys.use_relative)
+
+    def execute(self, context):
+        obj = context.active_object
+        me = obj.data
+        keys = me.shape_keys
+
+        if not keys or not keys.key_blocks:
+            self.report({'ERROR'}, "Object has no shape keys.")
+            return {'CANCELLED'}
+
+        if not keys.use_relative:
+            self.report({'ERROR'}, "Absolute shape keys are not supported.")
+            return {'CANCELLED'}
+
+        basis_key = keys.key_blocks[0]
+        active_key = obj.active_shape_key
+        active_index = obj.active_shape_key_index
+
+        if active_key == basis_key:
+            self.report(
+                {'WARNING'}, "Active key is Basis; nothing to transfer.")
+            return {'CANCELLED'}
+
+        bm = bmesh.from_edit_mesh(me)
+
+        # BMesh shape layers
+        basis_layer = bm.verts.layers.shape[0]
+        active_layer = bm.verts.layers.shape[active_index]
+
+        # Collect all other shape layers
+        other_layers = [
+            bm.verts.layers.shape[i]
+            for i in range(len(bm.verts.layers.shape))
+            if i not in (0, active_index)
+        ]
+
+        selected = 0
+        transferred = 0
+
+        for v in bm.verts:
+            if not v.select:
+                continue
+
+            selected += 1
+
+            old_basis = v[basis_layer]
+            new_basis = v[active_layer]
+
+            if old_basis == new_basis:
+                continue
+
+            # Compute delta
+            delta = new_basis - old_basis
+
+            # Apply to Basis
+            v[basis_layer] = new_basis.copy()
+            transferred += 1
+
+            # Apply delta to all other shape keys
+            for layer in other_layers:
+                v[layer] = v[layer] + delta
+
+        bmesh.update_edit_mesh(me, loop_triangles=False, destructive=False)
+
+        if selected == 0:
+            self.report({'WARNING'}, "No selected vertices.")
+            return {'CANCELLED'}
+
+        self.report(
+            {'INFO'},
+            f"Transferred {transferred} vertices to Basis and propagated delta to other shape keys."
+        )
+        return {'FINISHED'}
+
 
 
 class MESH_OT_copy_selected_to_new_shapekey(bpy.types.Operator):
@@ -510,6 +612,9 @@ def shapekey_specials_menu(self, context):
         MESH_OT_transfer_selected_to_basis.bl_idname,
         icon='TRIA_DOWN')
     self.layout.operator(
+        MESH_OT_transfer_selected_to_basis_propagate.bl_idname,
+        icon='MOD_ARRAY')
+    self.layout.operator(
         MESH_OT_copy_selected_to_new_shapekey.bl_idname,
         icon='DUPLICATE')
     self.layout.operator(
@@ -529,6 +634,7 @@ classes = (
     MESH_OT_move_selected_to_new_shapekey,
     MESH_OT_copy_selected_to_new_shapekey,
     MESH_OT_copy_selected_to_muted_shapekey,
+    MESH_OT_transfer_selected_to_basis_propagate,
 )
 
 

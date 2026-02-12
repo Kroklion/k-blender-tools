@@ -1,8 +1,10 @@
 from collections import deque
 from enum import Enum
+from typing import Any
 
 import bpy
 from bmesh.types import BMesh, BMEdge, BMFace, BMVert
+from mathutils import kdtree, Vector
 
 # from ..util.timed import timed
 
@@ -35,23 +37,25 @@ class TopoSymType(Enum):
 
 class TopoSym:
     def __init__(self, mesh: BMesh, mirror_axis_index=0, mirror_axis_sign=1,\
-        eps: float = 1e-5, shape_key_index: int = -1, limit_steps: int=-1) -> None:
+                 eps: float = 1e-5, shape_key_index: int = -1, limit_steps: int = -1, search_unreachable=True) -> None:
         """
         Initializes the topological resymmetrization process. Symmetry partners are determined.
 
         Parameters:
-        :param mesh:              The Blender BMesh object to be analyzed and resymmetrized.
-        :param mirror_axis_index: The index of the local axis used as the symmetry axis 
-                                    (0 for X, 1 for Y, 2 for Z).
-        :param mirror_axis_sign:  The direction/side sign (1 or -1) indicating the 
-                                    source and target sides relative to the axis.
-        :param eps:               Center Epsilon; the tolerance value used to classify vertices 
-                                    as being on the center line.
-        :param shape_key_index:   An index > 0 indicates an active shape key. In this case
-                                    the Basis needs to be used for classification.
-        :param limit_steps:       The maximum number of face-mapping iterations to perform. 
-                                    If set to -1, the algorithm runs until all reachable faces 
-                                    are processed. Debugging purpose.
+        :param mesh:               The Blender BMesh object to be analyzed and resymmetrized.
+        :param mirror_axis_index:  The index of the local axis used as the symmetry axis 
+                                     (0 for X, 1 for Y, 2 for Z).
+        :param mirror_axis_sign:   The direction/side sign (1 or -1) indicating the 
+                                     source and target sides relative to the axis.
+        :param eps:                Center Epsilon; the tolerance value used to classify vertices 
+                                     as being on the center line.
+        :param shape_key_index:    An index > 0 indicates an active shape key. In this case
+                                     the Basis needs to be used for classification.
+        :param limit_steps:        The maximum number of face-mapping iterations to perform. 
+                                     If set to -1, the algorithm runs until all reachable faces 
+                                     are processed. Debugging purpose.
+        :param search_unreachable: If unreachable faces remain, search for symmetric parts
+                                     by mirrored location and symmetrize from there.
         """
 
         self._mirror_axis_index = mirror_axis_index
@@ -90,6 +94,12 @@ class TopoSym:
         # Usage of this deque: append / popleft
         fifo: deque[FaceInfo] = deque()
 
+        # unconnected, used if search_unreachable
+        self._unconnected_targets_sorted = None
+        self._unconnected_target_index = 0
+        self._source_faces_kdtree = None
+        self._eps = eps
+
         targets = []
 
         for face in mesh.faces:
@@ -106,7 +116,18 @@ class TopoSym:
         fifo.extend(targets)
 
         fifo_search_count = len(fifo) + 2
-        while fifo_search_count > 0 and len(fifo) > 0 and limit_steps > 0:
+        while len(fifo) > 0 and limit_steps > 0:
+            if fifo_search_count == 0:
+                if not search_unreachable:
+                    return
+                else:
+                    result = self._search_unconnected(fifo)
+                    if not result:
+                        return
+                    # found something, rerun the search.
+                    fifo_search_count = len(fifo) + 2
+
+
             face_info = fifo.popleft()
             fifo_search_count -= 1
 
@@ -140,15 +161,195 @@ class TopoSym:
                             fifo.append(face_info)
 
                         face_info = next_face
-        
+
+    def _search_unconnected(self, fifo: deque['FaceInfo']):
+        """
+        Try to find a new symmetric face pair among currently unreachable faces.
+
+        Returns True if a new seed face was found and added to the FIFO,
+        False if nothing could be found.
+        """
+        # --- one-time initialization ---
+        if not self._unconnected_targets_sorted:
+            # Build sorted list of target faces (by distance to mirror plane)
+
+            # sort by distance of face center to mirror plane
+            def face_plane_dist(fi: FaceInfo) -> float:
+                center = self._get_sk_face_center(fi.face)
+                return abs(center[self._mirror_axis_index])
+
+            self._unconnected_targets_sorted = sorted(
+                fifo, key=face_plane_dist)
+            self._unconnected_target_index = 0
+
+            # Build KD-tree from source-side faces (is_sym_source)
+            src_faces = [fi for fi in self._face_infos
+                         if fi.is_sym_source and not fi.is_asymmetric]
+
+            if src_faces:
+                kd = kdtree.KDTree(len(src_faces))
+                for i, fi in enumerate(src_faces):
+                    center = self._get_sk_face_center(fi.face)
+                    kd.insert((center.x, center.y, center.z), i)
+                kd.balance()
+
+                # src_faces still needed to resolve index
+                self._source_faces_kdtree = (kd, src_faces)
+            else:
+                self._source_faces_kdtree = None
+
+        # If we have no KD-tree or no targets, nothing to do
+        if not self._source_faces_kdtree or not self._unconnected_targets_sorted:
+            return False
+
+        kd, src_faces = self._source_faces_kdtree
+        # scan targets from last index
+        while self._unconnected_target_index < len(self._unconnected_targets_sorted):
+            tgt_fi = self._unconnected_targets_sorted[self._unconnected_target_index]
+            self._unconnected_target_index += 1
+
+            # Skip if already symmetrized or asymmetric
+            if tgt_fi.is_symmetrized or tgt_fi.is_asymmetric:
+                continue
+
+            face = tgt_fi.face
+
+            # mirrored center on source side
+            c = self._get_sk_face_center(face)
+            c[self._mirror_axis_index] *= -1.0
+
+            # query KD-tree for nearby source faces
+            # use a small radius around mirrored center
+            candidates = kd.find_range((c.x, c.y, c.z), self._eps)
+            if not candidates:
+                continue
+
+            good_matches: list[FaceInfo] = []
+
+            # vertex mapping key = target BMVert
+            position_mapping_result: dict[BMVert, BMVert] = {}
+
+            for _, idx, _ in candidates:
+                src_fi = src_faces[idx]
+                src_face = src_fi.face
+
+                # basic checks: same vertex count
+                if len(src_face.verts) != len(face.verts):
+                    continue
+
+                # per-vertex position check (mirrored)
+                ok = True
+                position_mapping = {}
+
+                for v_tgt in face.verts:
+                    vt = self._get_sk_coordinate(v_tgt).copy()
+                    vt[self._mirror_axis_index] *= -1.0
+
+                    # find a vertex on src_face close to vt
+                    found = False
+                    for v_src in src_face.verts:
+                        if (self._get_sk_coordinate(v_src) - vt).length <= self._eps:
+                            # optional: valence check
+                            if len(v_src.link_edges) != len(v_tgt.link_edges):
+                                ok = False
+                                break
+                            position_mapping[v_tgt] = v_src
+                            found = True
+                            break
+                    if not found or not ok:
+                        ok = False
+                        break
+
+                # vertex order check
+                if ok:
+                    # Extract loop vertex indices
+                    # BMVert objects
+                    tgt_loop = [l.vert for l in face.loops]
+                    # BMVert objects
+                    src_loop = [l.vert for l in src_face.loops]
+
+                    # Build mirrored target loop using the position_mapping
+                    mirrored_tgt_loop = []
+                    for v_tgt in tgt_loop:
+                        mirrored_tgt_loop.append(position_mapping[v_tgt])
+
+                    if ok:
+                        # Convert to vertex indices for comparison
+                        mirrored_ids = [v.index for v in mirrored_tgt_loop]
+                        src_ids = [v.index for v in src_loop]
+
+                        def loops_match(a, b):
+                            """Check if loop a matches loop b under cyclic rotation."""
+                            if len(a) != len(b):
+                                return False
+                            n = len(a)
+                            for i in range(n):
+                                if all(a[(i + j) % n] == b[j] for j in range(n)):
+                                    return True
+                            return False
+
+                        # Check forward winding
+                        if not loops_match(mirrored_ids, src_ids):
+                            # Check reversed winding (mirroring flips orientation)
+                            if not loops_match(list(reversed(mirrored_ids)), src_ids):
+                                ok = False
+
+                    if ok:
+                        position_mapping_result = position_mapping
+                        good_matches.append(src_fi)
+
+            # ambiguous or none → skip
+            if len(good_matches) != 1:
+                continue
+
+            src_fi = good_matches[0]
+
+            for tgt_bmvert, src_bmvert in position_mapping_result.items():
+                self._vertex_infos[tgt_bmvert.index].set_partner(
+                    self._vertex_infos[src_bmvert.index])
+
+            # We found a unique symmetric source face for this target.
+            # Mark them as a new symmetry seed and push target into FIFO.
+
+            # mark as symmetric source/seed
+
+            tgt_fi.is_symmetrized = True  # initial symmetrized face
+
+            return True
+
+        # nothing found
+        return False
+
+    def _get_sk_coordinate(self, vertex: BMVert):
+        return vertex.co if self._shape_key_index <= 0 else vertex[self._mesh.verts.layers.shape[0]]
+
+    def _get_sk_face_center(self, face: BMFace):
+        """Return the face center using shape key coordinates if active."""
+        if self._shape_key_index <= 0:
+            # Basis → use built‑in center
+            return face.calc_center_median()
+
+        # Shape key active → compute center manually from basis
+        layer = self._mesh.verts.layers.shape[0]
+        acc = None
+        count = 0
+
+        for v in face.verts:
+            co = v[layer]
+            acc = co.copy() if acc is None else (acc + co)
+            count += 1
+
+        return acc / count
+
+
+
     # @timed
     def _classify_vertices(self, eps: float):
         # If a shape key is active, we need to use the Basis key for classification.
         # Build lists of types of vertices.
         for v in self._mesh.verts:
             info = VertexInfo(v)
-            val = v.co[self._mirror_axis_index] if self._shape_key_index <= 0 else v[self._mesh.verts.layers.shape[0]
-                                                                                     ][self._mirror_axis_index]
+            val = self._get_sk_coordinate(v)[self._mirror_axis_index]
             if abs(val) <= eps:
                 info.mark_center()
                 self._center_infos.append(info)
@@ -302,11 +503,12 @@ class TopoSym:
             return count
 
         elif type == TopoSymType.VERTEX_TARGET:
-            count = 0
-            for vertex in self._vertex_infos:
-                if vertex.get_is_target():
-                    count += 1
-            return count
+            return len(self._target_infos)
+            # count = 0
+            # for vertex in self._vertex_infos:
+            #     if vertex.get_is_target():
+            #         count += 1
+            # return count
 
         elif type == TopoSymType.VERTEX_SYMMETRIZED:
             count = 0
@@ -382,9 +584,11 @@ class TopoSym:
         for info in self._source_infos:
             opp = [infos[n.index]
                    for n in info.neighbors() if infos[n.index].get_is_target()]
+            # one target neighbor
             if len(opp) == 1 and not opp[0].vert.hide:
                 opp[0].set_partner(info)
                 count += 1
+            # source side vert with multiple target side neighbors, cannot be symmetric
             elif len(opp) > 1:
                 count_asym += 1
                 info.mark_asymmetric()
@@ -709,7 +913,6 @@ class FaceInfo:
                 if len(active_s_link_faces) == 1:
                     # border edge
                     # TODO This makes that face asymmetric, figure out what to set
-                    print("c2")
                     continue
 
                 if len(active_s_link_faces) > 2:
@@ -737,7 +940,6 @@ class FaceInfo:
                         # probably internal error
                         print(
                             f"edge: {se_edge.index}, ref: {self_vert_partners}, set0 {set0}, set1 {set1}")
-                        print("c5")
                         continue
 
             # assert number of vertices is same

@@ -238,12 +238,13 @@ This add-on has mainly been tested on Blender 4.4. It also loads in Blender 3.6 
 - Compared to Blender Built-Ins:
   - **Symmetrize** - Deletes and replaces geometry with a mirrored copy. Deadly if there is already asymmetric data on it such as UVs.
   - **Snap to Symmetry** - Only works reliably when each vertex is still closest to its true symmetric counterpart.
+  - **Topology Mirror** (Mirroring Options) - C++ performance and integrated into mesh editing system. Breaks on slightest asymmetry, cannot help with symmetrizing unconnected parts and highlighting asymmetries.
 - Works in **Edit Mode**.
 - Internally, the algorithm runs in three stages:
   - Classifies vertices by position into source side, center loop, and target side (configurable in the operator panel).
   - Detects initial faces and propagate symmetry from them, creating pair relations
   - Copies mirrored coordinates from the source side to the target side.
-- Separate mesh parts (e.g., eyeballs) can be symmetrized by identifying a matching face and linking corresponding edge vertices with temporary helper edges in the correct order.
+- Separate mesh parts (e.g., eyeballs) can be symmetrized by identifying a matching face and linking corresponding edge vertices with temporary helper edges in the correct order. With the option 'Position Based' on, a counterpart will be searched by mirrored position, a face needs to be already symmetric. 
 - Limitations:
   - Non-manifold geometry cannot be symmetrized.
   - A center loop is optional (e.g., a cube can still be symmetrized), but if present it must be detected accurately. Vertices must lie exactly on the symmetry axis or within the provided epsilon.

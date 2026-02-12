@@ -61,6 +61,12 @@ class MESH_OT_topology_resymmetrize(bpy.types.Operator):
         default=False
     )
 
+    position_based_search: bpy.props.BoolProperty(  # pyright:ignore[reportUninitializedInstanceVariable, reportInvalidTypeForm, reportUnknownMemberType]
+        name="Position Based",
+        description="If checked, for disconnected mesh pieces a position based search is preformed, requires at lease one face to be symmetrized.",
+        default=False
+    )
+
     debug: bpy.props.EnumProperty(  # pyright:ignore[reportUninitializedInstanceVariable, reportInvalidTypeForm, reportUnknownMemberType]
         name="Debug",
         items=[
@@ -105,6 +111,9 @@ class MESH_OT_topology_resymmetrize(bpy.types.Operator):
         row.prop(self, "only_selected")
 
         row = self.layout.row()
+        row.prop(self, "position_based_search")
+
+        row = self.layout.row()
         row.prop(self, "debug")
 
         row = self.layout.row()
@@ -146,7 +155,8 @@ class MESH_OT_topology_resymmetrize(bpy.types.Operator):
 
         # Create the mapping
         toposym = TopoSym(bm, axis, side_sign,
-                            self.eps, key_index, self.steps if self.limit_steps else -1)
+                          self.eps, key_index, self.steps if self.limit_steps else -1,
+                          search_unreachable=self.position_based_search)
 
         if toposym.get_count(TopoSymType.VERTEX_CENTER_ERRORS) > 0:
             toposym.select_in_bmesh(TopoSymType.VERTEX_CENTER_ERRORS)

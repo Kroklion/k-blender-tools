@@ -92,6 +92,7 @@ Projects an entire bone chain onto a plane, ensuring clean planar alignment for 
   - Keep existing roll  
   - Align +Z, –Z, +X, or –X axis of the first bone to the plane normal  
   - Optionally propagate roll alignment to **all bones** in the chain
+- Optional: Align to the coordinate system
 - Intended for finger rigging. LLMs think there are also other uses:
   - Straightening limbs or tentacles  
   - Fixing twisted imported rigs  

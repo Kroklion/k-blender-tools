@@ -21,15 +21,29 @@ class ARMATURE_OT_flatten_chain(bpy.types.Operator):
     bl_label = "Flatten Bone Chain"
     bl_options = {'REGISTER', 'UNDO'}
 
+    plane_mode: bpy.props.EnumProperty(
+        name="Plane Alignment",
+        description="Choose alignment of the flattening plane",
+        items=[
+            ('MEDIAN', "Median", "Use the median of intermediate joints"),
+            ('X_POS', "+X", "Align with armature +X"),
+            ('Y_POS', "+Y", "Align with armature +Y"),
+            ('Z_POS', "+Z", "Align with armature +Z"),
+            ('X_NEG', "-X", "Align with armature -X"),
+            ('Y_NEG', "-Y", "Align with armature -Y"),
+            ('Z_NEG', "-Z", "Align with armature -Z"),
+        ],
+        default='MEDIAN'
+    )
     roll_mode: bpy.props.EnumProperty(
         name="Align Roll",
         description="Align first bone's roll so a chosen axis matches the plane normal",
         items=[
             ('KEEP', "Keep", "Do not change roll"),
-            ('Z_POS', "+Z", "Align +Z axis to plane normal"),
-            ('Z_NEG', "-Z", "Align -Z axis to plane normal"),
-            ('X_POS', "+X", "Align +X axis to plane normal"),
-            ('X_NEG', "-X", "Align -X axis to plane normal"),
+            ('Z_POS', "+Z", "Align bone +Z axis"),
+            ('Z_NEG', "-Z", "Align bone -Z axis"),
+            ('X_POS', "+X", "Align bone +X axis"),
+            ('X_NEG', "-X", "Align bone -X axis"),
         ],
         default='KEEP'
     )
@@ -90,11 +104,23 @@ class ARMATURE_OT_flatten_chain(bpy.types.Operator):
             self.report({'INFO'}, "No intermediate joints to flatten")
             return {'FINISHED'}
 
-        # C = center (average) of intermediate joints
-        center = Vector((0.0, 0.0, 0.0))
-        for p in joint_points:
-            center += p
-        center /= len(joint_points)
+        # Determine third point C based on plane_mode
+        if self.plane_mode == 'MEDIAN':
+            # Use median of intermediate joints
+            center = sum(joint_points, Vector()) / len(joint_points)
+
+        else:
+            # Axis-aligned modes
+            axis_map = {
+                'X_POS': Vector((1, 0, 0)),
+                'X_NEG': Vector((-1, 0, 0)),
+                'Y_POS': Vector((0, 1, 0)),
+                'Y_NEG': Vector((0, -1, 0)),
+                'Z_POS': Vector((0, 0, 1)),
+                'Z_NEG': Vector((0, 0, -1)),
+            }
+            center = A + axis_map[self.plane_mode]
+
 
         # Compute plane normal from A, B, C
         AB = B - A

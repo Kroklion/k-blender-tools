@@ -11,11 +11,12 @@ Each submodule is self‑contained and exposes its own operators, panels, and ho
 | Submodule                  | Purpose                                           | Location / Hotkeys |
 |-----------------------------|---------------------------------------------------|--------------------|
 | **bone_mesh_sync.py**       | Sync bones to mesh via reference vertices         | 3D View > Object Menu > Bone Sync |
+| **ebone_align.py**          | Flatten bone chain and adjust roll                | Edit Armature Menu |
 | **ebone_rotate.py**         | Rotate edit bones around head                     | 3D View > Sidebar > Edit Tab > Rotate Edit Bones |
+| **ebone_slide.py**          | Slide edit bone endpoints                         | Shift + V (Edit Armature Menu) |
 | **cursor_rotation_snap.py** | Snap cursor/active with rotation                  | 3D View > Object > Snap Menu |
 | **cursor_presets.py**       |	Save and restore 3D Cursor transforms	            | Sidebar > View Tab > 3D Cursor Panel |
 | **ebone_select.py**         | Select/deselect parent/child bones                | Alt + Numpad + / Alt+Shift+Numpad+ / Alt+Numpad- / Alt+Shift+Numpad- |
-| **ebone_slide.py**          | Slide edit bone endpoints                         | Shift + V (Edit Armature Menu) |
 | **meshedit.py**             | Mesh edit utilities (zero X, center X, merge preview, merge coincident edges) | Vertex Menu / Merge Menu |
 | **shape_tools.py**          | Tools related to shape keys                       | Properties Editor > Object Data Properties (Mesh) > Shape Keys > 'Shape Key Specials' dropdown |
 | **to_rigify.py** (Experimental) | Map imported rigs to Rigify metarigs          | Sidebar > Rigify Tab |
@@ -72,10 +73,32 @@ This add-on has mainly been tested on Blender 4.4. It also loads in Blender 3.6 
 
 ### `bone_mesh_sync.py`
 **Sync Bones to Mesh via Reference Vertices**  
-- Creates reference vertices at bone heads/tails.  
-- Updates bones to match moved vertices.  
+- Creates reference vertices at bone heads/tails.
+- Proportional editing can be done on the mesh, also affecting these vertices.
+- After edit, updates bones to match moved vertices.  
 - Location: *3D View > Object Menu > Bone Sync*.  
 - Category: Rigging.
+
+### `ebone_align.py`
+**Flatten Bone Chain to Plane**  
+Projects an entire bone chain onto a plane, ensuring clean planar alignment for rigging, or corrective adjustments.
+
+- Works in **Armature Edit Mode**.
+- The plane is defined automatically using:
+  - The chain’s **start and end joints**, and  
+  - The **center of the intermediate joints**  
+  producing a best‑fit plane for the whole chain.
+- Optional **roll alignment**:
+  - Keep existing roll  
+  - Align +Z, –Z, +X, or –X axis of the first bone to the plane normal  
+  - Optionally propagate roll alignment to **all bones** in the chain
+- Intended for finger rigging. LLMs think there are also other uses:
+  - Straightening limbs or tentacles  
+  - Fixing twisted imported rigs  
+  - Preparing bones for IK setups  
+  - Ensuring planar deformation for mechanical rigs
+- **Location:** *Armature Edit Mode > Armature > Flatten Bone Chain*  
+- **Category:** Rigging
 
 ### `ebone_rotate.py`
 **Rotate Edit Bones Around Head**  
@@ -83,27 +106,6 @@ This add-on has mainly been tested on Blender 4.4. It also loads in Blender 3.6 
 - Panel: *3D View > Sidebar > Edit Tab > Rotate Edit Bones*.  
 - Operators for ±90° around X, Y, Z.  
 - Category: Rigging.
-
-### `cursor_rotation_snap.py`
-**Cursor Rotation Snap Tools**  
-- Snap 3D Cursor to active object, bone, or mesh element with rotation.  
-- Orient cursor –Y axis towards active element.  
-- Snap active object/bone to cursor with rotation.  
-- Location: *3D View > Object > Snap Menu*.  
-- Category: 3D View.
-
-
-### `cursor_presets.py`
-**Cursor Presets**
-- Save and restore 3D Cursor transforms (location and rotation).
-- Manage multiple presets via a list in the 3D Cursor panel.
-- Operators:
-    - Add Cursor Preset – store current cursor transform.
-    - Remove Cursor Preset – delete selected preset.
-    - Apply Cursor Preset – restore cursor to stored transform.
-- Optionally enable Auto Apply to automatically apply the preset when the selection changes.
-- Location: 3D View > Sidebar (N) > View Tab > 3D Cursor Panel.
-- Category: 3D View.
 
 ### `ebone_select.py`
 **Edit Bone Select/Deselect Shortcuts**  
@@ -122,6 +124,26 @@ This add-on has mainly been tested on Blender 4.4. It also loads in Blender 3.6 
 - Hotkey: `Shift + V`.  
 - Location: *3D View > Edit Mode (Armature) > Armature Menu*.  
 - Category: Rigging.
+
+### `cursor_rotation_snap.py`
+**Cursor Rotation Snap Tools**  
+- Snap 3D Cursor to active object, bone, or mesh element with rotation.  
+- Orient cursor –Y axis towards active element.  
+- Snap active object/bone to cursor with rotation.  
+- Location: *3D View > Object > Snap Menu*.  
+- Category: 3D View.
+
+### `cursor_presets.py`
+**Cursor Presets**
+- Save and restore 3D Cursor transforms (location and rotation).
+- Manage multiple presets via a list in the 3D Cursor panel.
+- Operators:
+    - Add Cursor Preset – store current cursor transform.
+    - Remove Cursor Preset – delete selected preset.
+    - Apply Cursor Preset – restore cursor to stored transform.
+- Optionally enable Auto Apply to automatically apply the preset when the selection changes.
+- Location: 3D View > Sidebar (N) > View Tab > 3D Cursor Panel.
+- Category: 3D View.
 
 ### `meshedit.py`
 **Mesh Edit Utilities**  
@@ -292,4 +314,4 @@ Please understand that responses to issues or pull requests may be slow.
 
 ## 📝 Acknowledgements
 
-Developed as a modular toolkit for Blender rigging, weight painting, and mesh editing workflows. And yes, LLM is used heavily in development.
+LLMs used in development.

@@ -158,10 +158,21 @@ class MESH_OT_topology_resymmetrize(bpy.types.Operator):
                           self.eps, key_index, self.steps if self.limit_steps else -1,
                           search_unreachable=self.position_based_search)
 
+        msg_parts = []
+
+        # warning if object rotated in world
+        rot = obj.matrix_world.to_euler()
+        if (abs(rot.x) > 1e-6 or abs(rot.y) > 1e-6 or abs(rot.z) > 1e-6):
+            warn = True
+            msg_parts.append(
+                "Object is rotated in world space - axes are not matching the viewport")
+
         if toposym.get_count(TopoSymType.VERTEX_CENTER_ERRORS) > 0:
             toposym.select_in_bmesh(TopoSymType.VERTEX_CENTER_ERRORS)
+            msg_parts.append(
+                "Center loop vert connects to more than two others, check the center loop.")
             self.report(
-                {'ERROR'}, "Center loop vert connects to more than two others, check the center loop.")
+                {'ERROR'}, ", ".join(msg_parts))
             return {'CANCELLED'}
 
         if self.debug != 'NORMAL':
@@ -191,15 +202,6 @@ class MESH_OT_topology_resymmetrize(bpy.types.Operator):
             bpy.ops.mesh.reveal(select=False)
 
         warn = False
-
-        msg_parts = []
-
-        # warning if object rotated in world
-        rot = obj.matrix_world.to_euler()
-        if (abs(rot.x) > 1e-6 or abs(rot.y) > 1e-6 or abs(rot.z) > 1e-6):
-            warn = True
-            msg_parts.append(
-                "Object is rotated in world space - axes are not matching the viewport")
 
         if asym_v > 0:
             warn = True

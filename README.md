@@ -18,6 +18,7 @@ Each submodule is self‑contained and exposes its own operators, panels, and ho
 | **cursor_presets.py**       |	Save and restore 3D Cursor transforms	            | Sidebar > View Tab > 3D Cursor Panel |
 | **ebone_select.py**         | Select/deselect parent/child bones                | Alt + Numpad + / Alt+Shift+Numpad+ / Alt+Numpad- / Alt+Shift+Numpad- |
 | **meshedit.py**             | Mesh edit utilities (zero X, center X, merge preview, merge coincident edges) | Vertex Menu / Merge Menu |
+| **tris_to_quads_edges.py**  | Selects edges that 'Tris to Quads' would dissolve | Face Menu |
 | **shape_tools.py**          | Tools related to shape keys                       | Properties Editor > Object Data Properties (Mesh) > Shape Keys > 'Shape Key Specials' dropdown |
 | **to_rigify.py** (Experimental) | Map imported rigs to Rigify metarigs          | Sidebar > Rigify Tab |
 | **vgroup_show_hide.py**     | Show/Hide/Solo vertex groups                      | Properties > Object Data > Vertex Groups Panel |
@@ -158,6 +159,17 @@ Projects an entire bone chain onto a plane, ensuring clean planar alignment for 
   - *3D View > Edit Mode (Mesh) > Vertex Menu*  
   - *3D View > Edit Mode (Mesh) > Merge Menu* or **M** hotkey
 - Category: Mesh.
+
+### `tris_to_quads_edges.py`
+**Tris to Quads (Select Only)**  
+Selects edges which Blender’s *Tris to Quads* operator would dissolve—without modifying the mesh. This allows to correct the selection before dissolving the edges.
+
+- Works in **Edit Mode**.
+- Using *Invert Selection* afterwards may highlight regions that *did not* convert cleanly.
+- Parameters for *Tris to Quads* are forwarded
+- Does **not** alter the original mesh.
+- **Location:** *3D View > Edit Mode > Face > Tris to Quads (Select Only)*  
+- **Category:** Mesh  
 
 ### `shape_tools.py`
 **Reset Active Shape Key to Reference**  

@@ -18,6 +18,8 @@ bl_info = {
         "- Move selected verts from active shape key into a new shape key.\n"
         "- Copy selected verts from active shape key into a new shape key.\n"
         "- Copy selected vertices from the active shape key into the only muted shape key."
+        "Object mode:\n"
+        "- Change the current shape key value to 1, keep the shape\n"
     ),
     "warning": "",
     "doc_url": "",
@@ -593,10 +595,84 @@ class MESH_OT_copy_selected_to_muted_shapekey(bpy.types.Operator):
         return {'FINISHED'}
 
 
+class MESH_OT_normalize_active_shapekey_value(bpy.types.Operator):
+    """
+    Normalize the active shape key so that its current visual shape becomes the new 1.0.
+    The shape remains visually identical, but the key value is set to 1.
+    """
+
+    bl_idname = "mesh.normalize_active_shapekey_value"
+    bl_label = "Normalize Shape Key Value"
+    bl_description = (
+        "Change the current shape key value to 1, keep the shape"
+    )
+    bl_options = {'REGISTER', 'UNDO'}
+
+    @classmethod
+    def poll(cls, context):
+        obj = context.active_object
+        if not obj or obj.type != 'MESH':
+            return False
+        if context.mode != 'OBJECT':
+            return False
+
+        keys = getattr(obj.data, "shape_keys", None)
+        if not keys or not keys.key_blocks:
+            return False
+
+        # Must not be Basis
+        return obj.active_shape_key_index != 0 and keys.use_relative
+
+    def execute(self, context):
+        obj = context.active_object
+        me = obj.data
+        keys = me.shape_keys
+
+        active_key = obj.active_shape_key
+        active_index = obj.active_shape_key_index
+
+        if active_index == 0:
+            self.report({'ERROR'}, "Basis cannot be normalized.")
+            return {'CANCELLED'}
+
+        if not keys.use_relative:
+            self.report({'ERROR'}, "Absolute shape keys are not supported.")
+            return {'CANCELLED'}
+
+        # Determine reference key
+        reference = active_key.relative_key if active_key.relative_key else keys.key_blocks[0]
+
+        value = active_key.value
+        if value == 0:
+            self.report({'ERROR'}, "Active key value is 0; cannot normalize.")
+            return {'CANCELLED'}
+
+        # Normalize: new_delta = old_delta / value
+        for i, kb in enumerate(active_key.data):
+            ref = reference.data[i].co
+            cur = kb.co
+
+            delta = cur - ref
+            new_delta = delta * value
+
+            kb.co = ref + new_delta
+
+        # Set value to 1
+        active_key.value = 1.0
+
+        self.report(
+            {'INFO'},
+            f"Normalized '{active_key.name}' (value set to 1, shape preserved)."
+        )
+        return {'FINISHED'}
+
+
 
 # Add entries to the Shape Key Specials menu
 def shapekey_specials_menu(self, context):
     self.layout.separator()
+    self.layout.operator(
+        MESH_OT_normalize_active_shapekey_value.bl_idname, icon='NORMALIZE_FCURVES')
     self.layout.operator(
         MESH_OT_reset_active_shapekey_to_reference.bl_idname,
         icon='LOOP_BACK',
@@ -635,6 +711,7 @@ classes = (
     MESH_OT_copy_selected_to_new_shapekey,
     MESH_OT_copy_selected_to_muted_shapekey,
     MESH_OT_transfer_selected_to_basis_propagate,
+    MESH_OT_normalize_active_shapekey_value,
 )
 
 

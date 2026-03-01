@@ -182,6 +182,8 @@ Selects edges which Blender’s *Tris to Quads* operator would dissolve—withou
   - Move selected verts from active shape key into a new shape key.
   - Copy selected verts from active shape key into a new shape key.
   - Copy selected vertices from the active shape key into the only muted shape key. Mute is used as a workaround to indicate the target shape key.
+- Object Mode:
+  - Change the current shape key value to 1, keep the shape
 
 - Location:  
   - *Properties Editor > Object Data Properties (Mesh) > Shape Keys > 'Shape Key Specials' dropdown*  

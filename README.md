@@ -172,7 +172,7 @@ Selects edges which Blender’s *Tris to Quads* operator would dissolve—withou
 - **Category:** Mesh  
 
 ### `shape_tools.py`
-**Reset Active Shape Key to Reference**  
+**Shape Key Tools**
 - Provides tools for working with shape keys in Edit Mode:
   - Reset the active shape key to match its reference (Basis or relative key) for selected vertices.
   - Select vertices that differ from the reference shape.
@@ -297,8 +297,31 @@ Selects edges which Blender’s *Tris to Quads* operator would dissolve—withou
 - Performance:<br>
   On a CPU with a ~3360 single‑thread score (popular benchmark site), a 100k‑face mesh (with half the faces on the target side being processed) completes in roughly **1.3 seconds**.<br>
   The first prototype required **1 minute** for a 10k‑face mesh.
-- Location: *3D View > Mesh > Topology Resymmetrize*.  
-- Category: Mesh.  
+- Location: *3D View > Mesh > Topology Resymmetrize*.
+- Category: Mesh.
+
+### `action_manager.py`
+**Action Slot Assigner**  
+Associates actions with objects, provides correction operators, assigns action slots to matching objects
+
+- Assign, organize, and reorder actions directly on the active object
+- Choose and apply an action to all objects referenced by action slots
+  - For most animation types the slot name and object name need to match
+  - NODETREE and MATERIAL types require the slot name to match the material name
+  - Not all animation types implemented
+
+- Reorient bones of imported models with existing animations
+  1. Preconditions: Bone F-curves are quaternions, interpolation type linear and keyed per frame. Other modes not supported.
+  2. Assign all related actions to the armature.
+  3. Armature selected, run 'Store Rest Pose' (stores it in a custom property on the bone).
+  4. Change rotations/length/roll of bones in armature edit mode. Don't change head location.
+  5. Run 'Correct Bone Rotations'. It will adapt all assigned actions so the animations look as before.
+  6. Repeat from 3. if needed.
+- Operator for correcting keyframe offsets if imported at wrong FPS setting
+- Batch rename actions
+- Blender versions without Action Slots can still run the other operators.
+- **Location:** *3D View > Animation Tab > Action Slots*  
+- **Category:** Rigging / Animation  
 
 ---
 

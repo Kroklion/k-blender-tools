@@ -20,7 +20,6 @@ bl_info = {
     "description": (
         "Adds mesh editing tools in Edit Mode:\n"
         "• Zero X Selected Vertices – set X coordinate of selected verts to 0\n"
-        "• Center Selected X – center selection along local X axis\n"
         "• Merge by Distance Preview – highlight verts within merge threshold\n"
         "• Merge Coincident Edges – Merges only selected edges that are coincident.\n"
         "  Useful for imports of file formats that only support UV island mesh connectivity."
@@ -109,53 +108,6 @@ class MESH_OT_merge_by_distance_preview(bpy.types.Operator):
         self.report(
             {'INFO'},
             f"Marked {len(to_select)} vertices within {self.threshold:.6f}"
-        )
-        return {'FINISHED'}
-
-
-class MESH_OT_center_selected_x_edit(bpy.types.Operator):
-    # deprecated by centerloop_align
-    bl_idname = "mesh.center_selected_x_edit"
-    bl_label = "Center Selected X in Edit Mode"
-    bl_options = {'REGISTER', 'UNDO'}
-
-    @classmethod
-    def poll(cls, context):
-        obj = context.active_object
-        return (
-            obj is not None
-            and obj.type == 'MESH'
-            and context.mode == 'EDIT_MESH'
-        )
-
-    def execute(self, context):
-        obj = context.active_object
-        mesh = obj.data
-
-        # Build a BMesh representation to read selection
-        bm = bmesh.from_edit_mesh(mesh)
-
-        # Collect only the verts that are currently selected
-        sel_verts = [v for v in bm.verts if v.select]
-        if not sel_verts:
-            self.report({'WARNING'}, "No vertices selected")
-            return {'CANCELLED'}
-
-        # Compute average X of selected verts in local space
-        avg_x = sum(v.co.x for v in sel_verts) / len(sel_verts)
-        dx = -avg_x
-
-        # Ensure the mesh is up-to-date before running ops
-        bmesh.update_edit_mesh(mesh, loop_triangles=False, destructive=False)
-
-        # Select all verts so that transform affects the entire mesh
-        bpy.ops.mesh.select_all(action='SELECT')
-
-        # Translate in Edit Mode along local X by dx
-        bpy.ops.transform.translate(
-            value=(dx, 0.0, 0.0),
-            orient_type='LOCAL',
-            constraint_axis=(True, False, False),
         )
         return {'FINISHED'}
 
@@ -436,7 +388,6 @@ def merge_menu_func(self, context):
 def register():
     bpy.utils.register_class(MESH_OT_zero_x_selected)
     bpy.utils.register_class(MESH_OT_merge_by_distance_preview)
-    bpy.utils.register_class(MESH_OT_center_selected_x_edit)
     bpy.utils.register_class(MESH_OT_edge_merge)
     
     bpy.types.VIEW3D_MT_edit_mesh_vertices.append(menu_func)

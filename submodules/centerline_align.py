@@ -7,7 +7,7 @@ bl_info = {
     "author": "",
     "version": (1, 0),
     "blender": (3, 0, 0),
-    "location": "View3D > Edit Mode > Mesh > Align to Axis (Best-Fit Plane)",
+    "location": "View3D > Edit Mode > Mesh > Align Selected to Plane",
     "description": (
         "Computes a best-fit plane from the selected vertices and rotates the mesh\n"
         "so that the plane's normal aligns with a chosen global axis (X, Y, or Z).\n"
@@ -31,13 +31,13 @@ def best_fit_plane_normal(verts):
 class MESH_OT_align_bestfit_plane(bpy.types.Operator):
     """Align mesh so best-fit plane normal of selection points to global axis"""
     bl_idname = "mesh.align_bestfit_plane"
-    bl_label = "Align to Axis (Best-Fit Plane)"
+    bl_label = "Align Selected to Plane"
     bl_options = {'REGISTER', 'UNDO'}
 
     target_axis: bpy.props.EnumProperty(
         name="Target Axis",
         items=[('X', "X", ""), ('Y', "Y", ""), ('Z', "Z", "")],
-        default='Z'
+        default='X'
     )
 
     recenter: bpy.props.BoolProperty(

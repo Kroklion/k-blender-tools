@@ -17,7 +17,7 @@ Each submodule is self‑contained and exposes its own operators, panels, and ho
 | **cursor_rotation_snap.py** | Snap cursor/active with rotation                  | 3D View > Object > Snap Menu |
 | **cursor_presets.py**       |	Save and restore 3D Cursor transforms	            | Sidebar > View Tab > 3D Cursor Panel |
 | **ebone_select.py**         | Extend/Reduce parent/child bones selection        | Alt + Numpad + / Alt+Shift+Numpad+ / Alt+Numpad- / Alt+Shift+Numpad- |
-| **meshedit.py**             | Mesh edit utilities (zero X, center X, merge preview, merge coincident edges) | Vertex Menu / Merge Menu |
+| **meshedit.py**             | Mesh edit utilities (zero X, merge preview, merge coincident edges) | Vertex Menu / Merge Menu |
 | **tris_to_quads_edges.py**  | Selects edges that 'Tris to Quads' would dissolve | Face Menu |
 | **shape_tools.py**          | Tools related to shape keys                       | Properties Editor > Object Data Properties (Mesh) > Shape Keys > 'Shape Key Specials' dropdown |
 | **to_rigify.py** (Experimental) | Map imported rigs to Rigify metarigs          | Sidebar > Rigify Tab |
@@ -27,7 +27,7 @@ Each submodule is self‑contained and exposes its own operators, panels, and ho
 | **wp_copy.py**              | Sync overlapping deforming meshes (WPSync)        | Sidebar > Edit Tab > WPSync Panel |
 | **wp_mask.py**              | Weight paint masking tools                        | M (Mask From Bones), Ctrl+Numpad+ (Grow), Ctrl+Numpad- (Shrink) |
 | **select_mode_toggle.py**   | Cycle selection/masking modes with Mouse Button 5 | Edit Mode (Vertex/Edge/Face), Weight/Vertex/Texture Paint Modes |
-| **centerline_align.py**     | Align mesh to global axis using best-fit plane    | Edit Mode > Mesh > Align to Axis (Best-Fit Plane) |
+| **centerline_align.py**     | Align mesh to global axis using best-fit plane    | View3D > Edit Mode > Mesh > Align Selected to Plane |
 | **shape_key_edit_hint.py**  | Show on‑screen hint when editing non‑Basis shape keys | 3D View (Edit/Sculpt Modes) |
 | **resymmetrize.py**         | Resymmetrizes vertex positions using topology     | Edit Mode > Mesh > Topology Resymmetrize |
 
@@ -151,7 +151,6 @@ Projects an entire bone chain onto a plane, ensuring clean planar alignment for 
 **Mesh Edit Utilities**  
 - Operators:  
   - Zero X Selected Vertices  
-  - Center Selected X in Edit Mode  
   - Merge by Distance Preview
   - Merge Coincident Edges – merge only selected edges that are coincident. Useful for imports of file formats that only support UV island mesh connectivity. Unlike Blenders *Merge By Distance* it will avoid collapsing whole faces or creating non-manifold geometry.
 
@@ -256,7 +255,7 @@ Selects edges which Blender’s *Tris to Quads* operator would dissolve—withou
 - Use e.g. when an imported model is not properly aligned:
   - Select the center loop
   - Run the operator
-- Location: 3D View > Edit Mode > Mesh > Align to Axis (Best-Fit Plane).
+- Location: View3D > Edit Mode > Mesh > Align Selected to Plane.
 - Category: Mesh.
 
 ### `shape_key_edit_hint.py`

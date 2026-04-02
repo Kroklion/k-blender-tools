@@ -8,7 +8,7 @@ Each submodule is self‑contained and exposes its own operators, panels, and ho
 
 ## 📑 Quick Reference
 
-| Submodule                  | Purpose                                           | Location / Hotkeys |
+| Submodule                   | Purpose                                           | Location / Hotkeys |
 |-----------------------------|---------------------------------------------------|--------------------|
 | **bone_mesh_sync.py**       | Sync bones to mesh via reference vertices         | 3D View > Object Menu > Bone Sync |
 | **ebone_align.py**          | Flatten bone chain and adjust roll                | Edit Armature Menu |
@@ -16,7 +16,7 @@ Each submodule is self‑contained and exposes its own operators, panels, and ho
 | **ebone_slide.py**          | Slide edit bone endpoints                         | Shift + V (Edit Armature Menu) |
 | **cursor_rotation_snap.py** | Snap cursor/active with rotation                  | 3D View > Object > Snap Menu |
 | **cursor_presets.py**       |	Save and restore 3D Cursor transforms	            | Sidebar > View Tab > 3D Cursor Panel |
-| **ebone_select.py**         | Select/deselect parent/child bones                | Alt + Numpad + / Alt+Shift+Numpad+ / Alt+Numpad- / Alt+Shift+Numpad- |
+| **ebone_select.py**         | Extend/Reduce parent/child bones selection        | Alt + Numpad + / Alt+Shift+Numpad+ / Alt+Numpad- / Alt+Shift+Numpad- |
 | **meshedit.py**             | Mesh edit utilities (zero X, center X, merge preview, merge coincident edges) | Vertex Menu / Merge Menu |
 | **tris_to_quads_edges.py**  | Selects edges that 'Tris to Quads' would dissolve | Face Menu |
 | **shape_tools.py**          | Tools related to shape keys                       | Properties Editor > Object Data Properties (Mesh) > Shape Keys > 'Shape Key Specials' dropdown |
@@ -112,11 +112,11 @@ Projects an entire bone chain onto a plane, ensuring clean planar alignment for 
 ### `ebone_select.py`
 **Edit Bone Select/Deselect Shortcuts**  
 - Hotkeys in Edit Armature Mode:  
-  - `Alt + Numpad +` → Select Child Bones  
-  - `Alt + Shift + Numpad +` → Select Parent Bones  
-  - `Alt + Numpad -` → Deselect Child Bones  
-  - `Alt + Shift + Numpad -` → Deselect Parent Bones  
-- Location: *3D View > Edit Mode (Armature)*.  
+  - `Alt + Numpad +` → Extend Child Bones  
+  - `Alt + Shift + Numpad +` → Extend Parent Bones  
+  - `Alt + Numpad -` → Reduce Child Bones  
+  - `Alt + Shift + Numpad -` → Reduce Parent Bones  
+- Location: *3D View > Edit Mode (Armature) > Select*.  
 - Category: Rigging.
 
 ### `ebone_slide.py`

@@ -50,8 +50,10 @@ class WPSyncPanel(Panel):
         props = context.scene.wp_sync_props
 
         row = layout.row()
-        row.operator(WPSyncAssignIDsButton.bl_idname,
+        row.operator(WPSyncAssignIDs.bl_idname,
                      text="Assign IDs", icon="GROUP_VERTEX")
+        row.operator(WPSyncCopyVGroupsFromIDs.bl_idname,
+                     text="Copy VGroups", icon="TRANSFORM_ORIGINS")
         
         # only in mesh edit mode
         if context.mode == 'EDIT_MESH':
@@ -74,46 +76,150 @@ class WPSyncPanel(Panel):
             return False
 
 
-class WPSyncAssignIDsButton(Operator):
-    ''' Creates an attribute for vertices and assigns an unique number. '''
+class WPSyncAssignIDs(Operator):
+    ''' Creates an attribute for vertices and assigns an unique number.'''
     bl_idname = "object.wpsync_assign_ids"
     bl_label = "add ID attribute to vertices"
     
+    attribute_name: bpy.props.StringProperty(
+        name="ID Attribute",
+        default="WPCPY_RID"
+    )
+
     @classmethod
     def poll(cls, context):
-        global evaluation_valid
-        return context.object is not None and\
-            context.object.type == 'MESH' # and\
-            # context.scene.wp_sync_props.source != ''
+        obj = context.active_object
+        return obj is not None and\
+            obj.type == 'MESH' and\
+            obj.mode == 'OBJECT' and\
+            len(context.selected_objects) >= 1
 
     def execute(self, context):
-        obj: Any = bpy.context.active_object
-        # mode = obj.mode
+        selected_meshes = [
+            o for o in context.selected_objects if o.type == 'MESH']
 
-        # we need to switch from Edit mode to Object mode so the selection gets updated
-        # bpy.ops.object.mode_set(mode='OBJECT')
-        
-        srcname = context.scene.wp_sync_props.source
-        log.info(srcname)
-        
-        mesh = obj.data
-        
-        if not srcname in mesh.attributes:
-            mesh.attributes.new(srcname, 'FLOAT', 'POINT')
+        count = 0
 
-        attribute = mesh.attributes[srcname]
-        i = 1.0
-        for item in attribute.data:
-            if item.value == 0:
-                value = random.uniform(1,9) + i
-                item.value = value
-            i = i + 10
+        for obj in selected_meshes:
+            mesh = obj.data
+        
+            if not self.attribute_name in mesh.attributes:
+                mesh.attributes.new(self.attribute_name, 'FLOAT', 'POINT')
 
-        # bpy.ops.object.mode_set(mode=mode)
-        # since we make no modification, no undo entry needed
-        return {'CANCELLED'}
-    
-    
+            attribute = mesh.attributes[self.attribute_name]
+
+            i = 1.0
+            for item in attribute.data:
+                if item.value == 0:
+                    value = random.uniform(1, 9) + i
+                    item.value = value
+                    count += 1
+                i = i + 10
+
+        self.report(
+            {'INFO'}, f"Assigned IDs to {count} vertices.")
+
+        return {'FINISHED'}
+
+
+class WPSyncCopyVGroupsFromIDs(bpy.types.Operator):
+    """Copy vertex group weights from active (source) to other selected (targets) using WPCPY_RID vertex IDs."""
+    bl_idname = "object.wpsync_copy_vgroups_from_ids"
+    bl_label = "Copy VGroups by Vertex IDs"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    attribute_name: bpy.props.StringProperty(
+        name="ID Attribute",
+        default="WPCPY_RID"
+    )
+
+    @classmethod
+    def poll(cls, context):
+        obj = context.active_object
+        return (
+            obj is not None and
+            obj.type == 'MESH' and
+            obj.mode == 'OBJECT' and
+            len(context.selected_objects) > 1
+        )
+
+    def execute(self, context):
+        src_obj = context.active_object
+        src_mesh = src_obj.data
+
+        if self.attribute_name not in src_mesh.attributes:
+            self.report(
+                {'ERROR'}, f"Source object has no attribute '{self.attribute_name}'")
+            return {'CANCELLED'}
+
+        src_attr = src_mesh.attributes[self.attribute_name]
+
+        # Build a map: ID value -> {vgroup_name: weight, ...}
+        id_to_vgroups = {}
+
+        # Pre-build mapping from group index to name for source
+        src_group_index_to_name = {
+            g.index: g.name for g in src_obj.vertex_groups}
+
+        for v_idx, attr_item in enumerate(src_attr.data):
+            vid = attr_item.value
+            if vid == 0.0:
+                continue
+
+            # Collect all vertex group weights for this vertex
+            v = src_obj.data.vertices[v_idx]
+            vgroup_weights = {}
+            for g in v.groups:
+                g_name = src_group_index_to_name.get(g.group)
+                if g_name is not None:
+                    vgroup_weights[g_name] = g.weight
+
+            if vgroup_weights:
+                id_to_vgroups[vid] = vgroup_weights
+
+        if not id_to_vgroups:
+            self.report(
+                {'WARNING'}, "No source vertices with IDs and vertex groups found.")
+            return {'CANCELLED'}
+
+        # Process target objects
+        for tgt_obj in context.selected_objects:
+            if tgt_obj is src_obj or tgt_obj.type != 'MESH':
+                continue
+
+            tgt_mesh = tgt_obj.data
+
+            if self.attribute_name not in tgt_mesh.attributes:
+                self.report(
+                    {'INFO'}, f"Target '{tgt_obj.name}' has no attribute '{self.attribute_name}', skipping.")
+                continue
+
+            tgt_attr = tgt_mesh.attributes[self.attribute_name]
+
+            # Ensure we can look up or create vertex groups by name on target
+            def get_or_create_vgroup(obj, name):
+                vg = obj.vertex_groups.get(name)
+                if vg is None:
+                    vg = obj.vertex_groups.new(name=name)
+                return vg
+
+            # For each target vertex, find matching ID and copy weights
+            for v_idx, attr_item in enumerate(tgt_attr.data):
+                vid = attr_item.value
+                if vid == 0.0:
+                    continue
+
+                vgroup_weights = id_to_vgroups.get(vid)
+                if not vgroup_weights:
+                    continue
+
+                for g_name, weight in vgroup_weights.items():
+                    vg = get_or_create_vgroup(tgt_obj, g_name)
+                    vg.add([v_idx], weight, 'REPLACE')
+
+        return {'FINISHED'}
+
+
 class WPSyncSetSrc(Operator):
     """Assign selected verts to a XFER_PROX_SRC_⋯ group"""
     bl_idname = "object.wpsync_set_prox_src"
@@ -370,7 +476,10 @@ class WPSyncTransferProx(Operator):
 classes = [
     PG_WPSyncProperties,
     WPSyncPanel,
-    WPSyncAssignIDsButton,
+    # weight transfer by id
+    WPSyncAssignIDs,
+    WPSyncCopyVGroupsFromIDs,
+    # weight transfer by flag vgroup
     WPSyncSetSrc,
     WPSyncSetDest,
     WPSyncTransferProx,
@@ -380,7 +489,8 @@ classes = [
 def register():
     for cls in classes:
         bpy.utils.register_class(cls)
-        bpy.types.Scene.wp_sync_props = PointerProperty(type=PG_WPSyncProperties)
+
+    bpy.types.Scene.wp_sync_props = PointerProperty(type=PG_WPSyncProperties)
 
 def unregister():
     del bpy.types.Scene.wp_sync_props

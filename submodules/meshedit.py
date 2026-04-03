@@ -368,11 +368,9 @@ class MESH_OT_edge_merge(bpy.types.Operator):
 
 # --- MESH_OT_edge_merge --- END
 
-# ---------- Registration ----------
-def menu_func(self, context):
-    self.layout.operator(MESH_OT_zero_x_selected.bl_idname)
-    self.layout.operator(MESH_OT_center_selected_x_edit.bl_idname)
 
+def menu_func_edit_verts(self, context):
+    self.layout.operator(MESH_OT_zero_x_selected.bl_idname)
 
 def merge_menu_func(self, context):
     layout = self.layout
@@ -385,24 +383,26 @@ def merge_menu_func(self, context):
     layout.operator(MESH_OT_edge_merge.bl_idname)
 
 
+classes = [
+    MESH_OT_zero_x_selected,
+    MESH_OT_merge_by_distance_preview,
+    MESH_OT_edge_merge
+]
+
 def register():
-    bpy.utils.register_class(MESH_OT_zero_x_selected)
-    bpy.utils.register_class(MESH_OT_merge_by_distance_preview)
-    bpy.utils.register_class(MESH_OT_edge_merge)
+
+    for cls in classes:
+        bpy.utils.register_class(cls)
     
-    bpy.types.VIEW3D_MT_edit_mesh_vertices.append(menu_func)
+    bpy.types.VIEW3D_MT_edit_mesh_vertices.append(menu_func_edit_verts)
     bpy.types.VIEW3D_MT_edit_mesh_merge.append(merge_menu_func)
 
-
 def unregister():
-    bpy.types.VIEW3D_MT_edit_mesh_vertices.remove(menu_func)
+    bpy.types.VIEW3D_MT_edit_mesh_vertices.remove(menu_func_edit_verts)
     bpy.types.VIEW3D_MT_edit_mesh_merge.remove(merge_menu_func)
-    
-    bpy.utils.unregister_class(MESH_OT_center_selected_x_edit)
-    bpy.utils.unregister_class(MESH_OT_merge_by_distance_preview)
-    bpy.utils.unregister_class(MESH_OT_zero_x_selected)
-    bpy.utils.unregister_class(MESH_OT_edge_merge)
 
+    for cls in reversed(classes):
+        bpy.utils.unregister_class(cls)
 
 if __name__ == "__main__":
     register()

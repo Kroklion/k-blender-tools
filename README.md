@@ -17,7 +17,8 @@ Each submodule is self‑contained and exposes its own operators, panels, and ho
 | **cursor_rotation_snap.py** | Snap cursor/active with rotation                  | 3D View > Object > Snap Menu |
 | **cursor_presets.py**       |	Save and restore 3D Cursor transforms	            | Sidebar > View Tab > 3D Cursor Panel |
 | **ebone_select.py**         | Extend/Reduce parent/child bones selection        | Alt + Numpad + / Alt+Shift+Numpad+ / Alt+Numpad- / Alt+Shift+Numpad- |
-| **meshedit.py**             | Mesh edit utilities (zero X, merge preview, merge coincident edges) | Vertex Menu / Merge Menu |
+| **mesh_edit.py**            | Mesh edit utilities (zero X, merge coincident edges) | Vertex Menu / Merge Menu |
+| **mesh_select.py**          | Mesh selection utilities (merge preview)          | Merge Menu |
 | **tris_to_quads_edges.py**  | Selects edges that 'Tris to Quads' would dissolve | Face Menu |
 | **shape_tools.py**          | Tools related to shape keys                       | Properties Editor > Object Data Properties (Mesh) > Shape Keys > 'Shape Key Specials' dropdown |
 | **to_rigify.py** (Experimental) | Map imported rigs to Rigify metarigs          | Sidebar > Rigify Tab |
@@ -147,15 +148,24 @@ Projects an entire bone chain onto a plane, ensuring clean planar alignment for 
 - Location: 3D View > Sidebar (N) > View Tab > 3D Cursor Panel.
 - Category: 3D View.
 
-### `meshedit.py`
+### `mesh_edit.py`
 **Mesh Edit Utilities**  
 - Operators:  
   - Zero X Selected Vertices  
+  - Merge Coincident Edges – merge only selected edges that are coincident. Useful for imports of file formats that only support UV island mesh connectivity. Unlike Blenders *Merge By Distance* it will avoid collapsing whole faces or creating non-manifold geometry.
+
+- Location:  
+  - *3D View > Edit Mode (Mesh) > Vertex Menu*
+  - *3D View > Edit Mode (Mesh) > Merge Menu* or **M** hotkey
+- Category: Mesh.
+
+### `mesh_select.py`
+**Mesh Selection Utilities**  
+- Operators:  
   - Merge by Distance Preview
   - Merge Coincident Edges – merge only selected edges that are coincident. Useful for imports of file formats that only support UV island mesh connectivity. Unlike Blenders *Merge By Distance* it will avoid collapsing whole faces or creating non-manifold geometry.
 
 - Location:  
-  - *3D View > Edit Mode (Mesh) > Vertex Menu*  
   - *3D View > Edit Mode (Mesh) > Merge Menu* or **M** hotkey
 - Category: Mesh.
 

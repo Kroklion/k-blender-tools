@@ -13,14 +13,11 @@ bl_info = {
         " - Zero X Selected Vertices\n"
         " - Center Selected X in Edit Mode\n"
         "3D View > Edit Mode (Mesh) > Merge Menu\n"
-        " - Merge by Distance Preview"
-        "3D View > Edit Mode (Mesh) > Merge Menu\n"
         " - Merge Coincident Edges"
     ),
     "description": (
         "Adds mesh editing tools in Edit Mode:\n"
         "• Zero X Selected Vertices – set X coordinate of selected verts to 0\n"
-        "• Merge by Distance Preview – highlight verts within merge threshold\n"
         "• Merge Coincident Edges – Merges only selected edges that are coincident.\n"
         "  Useful for imports of file formats that only support UV island mesh connectivity."
     ),
@@ -55,62 +52,6 @@ class MESH_OT_zero_x_selected(bpy.types.Operator):
         self.report({'INFO'}, f"Zeroed X on {count} verts")
         return {'FINISHED'}
     
-
-class MESH_OT_merge_by_distance_preview(bpy.types.Operator):
-    bl_idname = "mesh.merge_by_distance_preview"
-    bl_label = "Preview Merge by Distance"
-    bl_description = "Select only vertices within threshold that would be merged"
-    bl_options = {'REGISTER', 'UNDO'}
-
-    threshold: bpy.props.FloatProperty(
-        name="Distance",
-        default=0.001,
-        min=0.0,
-        precision=4,
-        description="Max distance for merging"
-    )
-
-    @classmethod
-    def poll(cls, context):
-        obj = context.active_object
-        return obj and obj.type == 'MESH' and context.mode == 'EDIT_MESH'
-
-    def execute(self, context):
-        obj = context.edit_object
-        me = obj.data
-        bm = bmesh.from_edit_mesh(me)
-        
-        # ensure the verts list uses stable indices
-        bm.verts.ensure_lookup_table()
-
-        # Build KD-Tree of all verts
-        size = len(bm.verts)
-        kd = KDTree(size)
-        for i, v in enumerate(bm.verts):
-            kd.insert(v.co, i)
-        kd.balance()
-
-        # Find all verts with neighbors within threshold
-        to_select = set()
-        for i, v in enumerate(bm.verts):
-            hits = kd.find_range(v.co, self.threshold)
-            if len(hits) > 1:
-                for co, idx, dist in hits:
-                    to_select.add(idx)
-
-        # Deselect all, then select only the affected verts
-        for v in bm.verts:
-            v.select = False
-        for idx in to_select:
-            bm.verts[idx].select = True
-
-        bmesh.update_edit_mesh(me)
-        self.report(
-            {'INFO'},
-            f"Marked {len(to_select)} vertices within {self.threshold:.6f}"
-        )
-        return {'FINISHED'}
-
 
 # --- MESH_OT_edge_merge --- START
 def faces_are_identical(f1, f2, threshold=1e-5):
@@ -374,18 +315,12 @@ def menu_func_edit_verts(self, context):
 
 def merge_menu_func(self, context):
     layout = self.layout
-    layout.separator()  # optional: draws a line to group your item
-    layout.operator(
-        MESH_OT_merge_by_distance_preview.bl_idname,
-        text="Merge by Distance Preview",
-        icon='AUTOMERGE_ON'
-    )
+    layout.separator()
     layout.operator(MESH_OT_edge_merge.bl_idname)
 
 
 classes = [
     MESH_OT_zero_x_selected,
-    MESH_OT_merge_by_distance_preview,
     MESH_OT_edge_merge
 ]
 

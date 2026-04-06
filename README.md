@@ -18,7 +18,7 @@ Each submodule is self‑contained and exposes its own operators, panels, and ho
 | **cursor_presets.py**       |	Save and restore 3D Cursor transforms	            | Sidebar > View Tab > 3D Cursor Panel |
 | **ebone_select.py**         | Extend/Reduce parent/child bones selection        | Alt + Numpad + / Alt+Shift+Numpad+ / Alt+Numpad- / Alt+Shift+Numpad- |
 | **mesh_edit.py**            | Mesh edit utilities (zero X, merge coincident edges) | Vertex Menu / Merge Menu |
-| **mesh_select.py**          | Mesh selection utilities (merge preview)          | Merge Menu |
+| **mesh_select.py**          | Mesh selection utilities (Merge Preview, select UV Island Borders) | Merge Menu / Select Menu |
 | **tris_to_quads_edges.py**  | Selects edges that 'Tris to Quads' would dissolve | Face Menu |
 | **shape_tools.py**          | Tools related to shape keys                       | Properties Editor > Object Data Properties (Mesh) > Shape Keys > 'Shape Key Specials' dropdown |
 | **to_rigify.py** (Experimental) | Map imported rigs to Rigify metarigs          | Sidebar > Rigify Tab |
@@ -163,10 +163,9 @@ Projects an entire bone chain onto a plane, ensuring clean planar alignment for 
 **Mesh Selection Utilities**  
 - Operators:  
   - Merge by Distance Preview
-  - Merge Coincident Edges – merge only selected edges that are coincident. Useful for imports of file formats that only support UV island mesh connectivity. Unlike Blenders *Merge By Distance* it will avoid collapsing whole faces or creating non-manifold geometry.
-
-- Location:  
-  - *3D View > Edit Mode (Mesh) > Merge Menu* or **M** hotkey
+    - Location: *3D View > Edit Mode (Mesh) > Merge Menu* or **M** hotkey
+  - Select UV Island Borders – Selects all edges and vertices that enclose the UV islands."
+    - Location: *3D View > Edit Mode (Mesh) > Select*
 - Category: Mesh.
 
 ### `tris_to_quads_edges.py`

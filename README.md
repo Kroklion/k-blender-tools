@@ -16,6 +16,7 @@ Each submodule is self‑contained and exposes its own operators, panels, and ho
 | **ebone_slide.py**          | Slide edit bone endpoints                         | Shift + V (Edit Armature Menu) |
 | **cursor_rotation_snap.py** | Snap cursor/active with rotation                  | 3D View > Object > Snap Menu |
 | **cursor_presets.py**       |	Save and restore 3D Cursor transforms	            | Sidebar > View Tab > 3D Cursor Panel |
+| **drivers.py**              | Driver related: Drive Shape Keys from Active      | 3D View > Object Menu |
 | **ebone_select.py**         | Extend/Reduce parent/child bones selection        | Alt + Numpad + / Alt+Shift+Numpad+ / Alt+Numpad- / Alt+Shift+Numpad- |
 | **mesh_edit.py**            | Mesh edit utilities (zero X, merge coincident edges) | Vertex Menu / Merge Menu |
 | **mesh_select.py**          | Mesh selection utilities (Merge Preview, select UV Island Borders) | Merge Menu / Select Menu |
@@ -147,6 +148,13 @@ Projects an entire bone chain onto a plane, ensuring clean planar alignment for 
 - Optionally enable Auto Apply to automatically apply the preset when the selection changes.
 - Location: 3D View > Sidebar (N) > View Tab > 3D Cursor Panel.
 - Category: 3D View.
+
+### `drivers.py`
+**Driver Utilities**  
+- Operators:
+  - Drive Shape Keys from Active
+    - Link matching shape keys on selected objects to the active object using drivers. If multiple objects have shape keys with same name, they can all be changed from the active object. I.e. eyelashes/brows from face.
+    - Location: Object mode, Object menu.
 
 ### `mesh_edit.py`
 **Mesh Edit Utilities**  

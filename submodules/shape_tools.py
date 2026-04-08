@@ -667,10 +667,49 @@ class MESH_OT_normalize_active_shapekey_value(bpy.types.Operator):
         return {'FINISHED'}
 
 
+class MESH_OT_zero_all_shapekey_values(bpy.types.Operator):
+    """
+    Set all shape key values of the active mesh object to 0.
+    """
+
+    bl_idname = "mesh.zero_all_shapekey_values"
+    bl_label = "Zero All Shape Key Values"
+    bl_description = "Set all shape key values of the active object to 0"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    @classmethod
+    def poll(cls, context):
+        obj = context.active_object
+        if not obj or obj.type != 'MESH':
+            return False
+        if context.mode != 'OBJECT':
+            return False
+
+        keys = getattr(obj.data, "shape_keys", None)
+        return bool(keys and keys.key_blocks)
+
+    def execute(self, context):
+        obj = context.active_object
+        keys = obj.data.shape_keys
+
+        if not keys or not keys.key_blocks:
+            self.report({'ERROR'}, "Object has no shape keys.")
+            return {'CANCELLED'}
+
+        for kb in keys.key_blocks:
+            kb.value = 0.0
+
+        self.report({'INFO'}, "All shape key values set to 0.")
+        return {'FINISHED'}
+
+
+
 
 # Add entries to the Shape Key Specials menu
 def shapekey_specials_menu(self, context):
     self.layout.separator()
+    self.layout.operator(
+        MESH_OT_zero_all_shapekey_values.bl_idname, icon='X')
     self.layout.operator(
         MESH_OT_normalize_active_shapekey_value.bl_idname, icon='NORMALIZE_FCURVES')
     self.layout.operator(
@@ -712,6 +751,7 @@ classes = (
     MESH_OT_copy_selected_to_muted_shapekey,
     MESH_OT_transfer_selected_to_basis_propagate,
     MESH_OT_normalize_active_shapekey_value,
+    MESH_OT_zero_all_shapekey_values
 )
 
 

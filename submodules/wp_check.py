@@ -1,3 +1,5 @@
+from bpy.props import StringProperty, BoolProperty
+import re
 from typing import Any
 import bpy
 import bmesh
@@ -270,6 +272,7 @@ class WPCheckPanel(Panel):
             row.enabled = any_selected
             row.operator(WPCheckDeleteButton.bl_idname, text="Delete")
             row.operator(WPCheckZeroButton.bl_idname, text="Zero")
+            row.operator(WPCheckBatchRename.bl_idname, text="Rename")
 
             # Math box (operand + operation + apply)
             box = layout.box()
@@ -875,6 +878,103 @@ class WPCheckFillMissingButton(bpy.types.Operator):
         return {'FINISHED'}
 
 
+class WPCheckBatchRename(bpy.types.Operator):
+    """Batch rename selected vertex groups using Regex."""
+
+    bl_idname = "object.wpcheck_batch_rename"
+    bl_label = "Batch Rename (Regex)"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    search: StringProperty(
+        name="Search (Regex)",
+        description="Regex pattern to search for in selected vertex group names",
+        default=""
+    )
+
+    replace: StringProperty(
+        name="Replace With",
+        description="Replacement string (supports regex groups)",
+        default=""
+    )
+
+    case_sensitive: BoolProperty(
+        name="Case Sensitive",
+        default=True
+    )
+
+    @classmethod
+    def poll(cls, context):
+        global evaluation_valid
+        return (
+            context.object is not None
+            and context.object.type == 'MESH' and evaluation_valid
+        )
+
+    def invoke(self, context, event):
+        return context.window_manager.invoke_props_dialog(self)
+
+    def draw(self, context):
+        layout = self.layout
+        col = layout.column()
+        col.prop(self, "search")
+        col.prop(self, "replace")
+        col.prop(self, "case_sensitive")
+
+        box = col.box()
+        box.label(text="Regex Tips:")
+        box.label(text="^ = start of name")
+        box.label(text="$ = end of name")
+        box.label(text="Use \\ to escape special chars e.g. \\.")
+        box.label(text="Groups: ( ) and \\1, \\2 ...")
+
+    def execute(self, context):
+        obj = context.object
+        props = context.scene.wp_check_props
+
+        if not obj or not self.search:
+            return {'CANCELLED'}
+
+        # Compile regex
+        flags = 0 if self.case_sensitive else re.IGNORECASE
+        try:
+            pattern = re.compile(self.search, flags)
+        except re.error as e:
+            self.report({'ERROR'}, f"Invalid regex: {e}")
+            return {'CANCELLED'}
+
+        # Collect selected groups from the WPCheck list
+        selected_groups = {
+            item.group_index: item.name
+            for item in props.list
+            if item.selected
+        }
+
+        if not selected_groups:
+            self.report({'WARNING'}, "No groups selected in the list")
+            return {'CANCELLED'}
+
+        mode = obj.mode
+        bpy.ops.object.mode_set(mode='OBJECT')
+
+        renamed_count = 0
+
+        # Rename only selected vertex groups
+        for vg in obj.vertex_groups:
+            if vg.index in selected_groups:
+                new_name = pattern.sub(self.replace, vg.name)
+                if new_name != vg.name:
+                    vg.name = new_name
+                    renamed_count += 1
+
+        self.report({'INFO'}, f"Renamed {renamed_count} vertex groups")
+
+        bpy.ops.object.mode_set(mode=mode)
+        bpy.ops.object.wpcheck_evaluate()
+
+        return {'FINISHED'}
+
+
+
 # Callback from Blender, active while evaluation valid
 def update_selection_status(scene, depsgraph):
     global evaluation_valid
@@ -976,7 +1076,8 @@ classes = [
     PG_WPCheckProperties,
     WPCheckMathButton,
     WPCheckMoveToSelectedButton,
-    WPCheckFillMissingButton
+    WPCheckFillMissingButton,
+    WPCheckBatchRename
 ]
 
 

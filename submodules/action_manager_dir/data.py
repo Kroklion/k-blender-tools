@@ -48,7 +48,7 @@ class PG_KActionManagerProperties(PropertyGroup):
     pin_object: BoolProperty(
         name="Pin Object Actions",
         description="Display the specified object even if it's not selected",
-        default=True
+        default=False
     )
     pinned_object: PointerProperty(
         name="Pinned Object",

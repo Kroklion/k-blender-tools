@@ -205,7 +205,7 @@ class AS_OT_AddActionToObject(Operator):
 
     @classmethod
     def poll(cls, context):
-        return context.object is not None and len(bpy.data.actions) > 0
+        return get_reference_object(context) is not None and len(bpy.data.actions) > 0
 
     def execute(self, context):
         obj = get_reference_object(context)

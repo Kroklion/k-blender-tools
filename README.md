@@ -10,7 +10,7 @@ Each submodule is self‑contained and exposes its own operators, panels, and ho
 
 | Submodule                   | Purpose                                           | Location / Hotkeys |
 |-----------------------------|---------------------------------------------------|--------------------|
-| **bone_mesh_sync.py**       | Sync bones to mesh via reference vertices         | 3D View > Object Menu > Bone Sync |
+| **bone_mesh_sync.py**       | Sync bones to mesh via reference vertices         | 3D View > Object > Create Reference Vertices / Update Bone Positions |
 | **ebone_align.py**          | Flatten bone chain and adjust roll                | Edit Armature Menu |
 | **ebone_rotate.py**         | Rotate edit bones around head                     | 3D View > Sidebar > Edit Tab > Rotate Edit Bones |
 | **ebone_slide.py**          | Slide edit bone endpoints                         | Shift + V (Edit Armature Menu) |
@@ -78,8 +78,9 @@ This add-on has mainly been tested on Blender 4.4. It also loads in Blender 3.6 
 **Sync Bones to Mesh via Reference Vertices**  
 - Creates reference vertices at bone heads/tails.
 - Proportional editing can be done on the mesh, also affecting these vertices.
-- After edit, updates bones to match moved vertices.  
-- Location: *3D View > Object Menu > Bone Sync*.  
+- After edit, updates bones to match moved vertices.
+- Update Bone Positions will derive the rig from the Armature modifier if only a mesh is selected. If an armature is selected additionally that one will be used. This is for a basic Rigify support with its metarig detour, expected to break though on subrigs that divide the bones.
+- Location: *3D View > Object Menu > Create Reference Vertices / Update Bone Positions*.  
 - Category: Rigging.
 
 ### `ebone_align.py`

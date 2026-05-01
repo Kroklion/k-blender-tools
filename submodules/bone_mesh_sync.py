@@ -9,8 +9,8 @@ bl_info = {
     "version": (2, 0, 0),
     "blender": (3, 0, 0),
     "location": (
-        "3D View > Object > Create reference vertices\n"
-        "3D View > Object > Update bone positions"
+        "3D View > Object > Create Reference Vertices\n"
+        "3D View > Object > Update Bone Positions"
     ),
     "description": (
         "Synchronize bone positions with mesh geometry using reference vertices.\n"
@@ -45,6 +45,13 @@ def get_armature_from_mesh(mesh_obj):
     for mod in mesh_obj.modifiers:
         if mod.type == 'ARMATURE' and getattr(mod, "object", None) and mod.object.type == 'ARMATURE':
             return mod.object
+    return None
+
+
+def get_selected_armature(context):
+    for obj in context.selected_objects:
+        if obj.type == 'ARMATURE':
+            return obj
     return None
 
 
@@ -176,7 +183,7 @@ def switch_mode(mode):
 
 class BONE_SYNC_OT_create_refs(bpy.types.Operator):
     bl_idname = "bone_sync.create_reference_vertices"
-    bl_label = "Create reference vertices"
+    bl_label = "Create Reference Vertices"
     bl_options = {'REGISTER', 'UNDO'}
 
     def execute(self, context):
@@ -240,7 +247,7 @@ class BONE_SYNC_OT_create_refs(bpy.types.Operator):
 
 class BONE_SYNC_OT_update_bones(bpy.types.Operator):
     bl_idname = "bone_sync.update_bone_positions"
-    bl_label = "Update bone positions"
+    bl_label = "Update Bone Positions"
     bl_options = {'REGISTER', 'UNDO'}
 
     def execute(self, context):
@@ -249,11 +256,21 @@ class BONE_SYNC_OT_update_bones(bpy.types.Operator):
             self.report({'ERROR'}, "Select one mesh object.")
             return {'CANCELLED'}
 
-        arm_obj = get_armature_from_mesh(mesh_obj)
+        # Prefer explicitly selected armature if present
+        prefer_stripped = False
+
+        arm_obj = get_selected_armature(context)
+        if not arm_obj:
+            arm_obj = get_armature_from_mesh(mesh_obj)
+        else:
+            prefer_stripped = True
+
         if not arm_obj:
             self.report(
-                {'ERROR'}, "No Armature modifier found on the selected mesh.")
+                {'ERROR'}, "No Armature modifier found in mesh modifier or selection.")
             return {'CANCELLED'}
+
+        print(f"armature {arm_obj.name}")
 
         # Read reference vertices from mesh
         bm, was_editmode = ensure_bmesh(mesh_obj, for_write=True)
@@ -262,7 +279,7 @@ class BONE_SYNC_OT_update_bones(bpy.types.Operator):
             if not was_editmode:
                 bm.free()
             self.report(
-                {'ERROR'}, "No reference layer found. Run 'Create reference vertices' first.")
+                {'ERROR'}, "No reference layer found. Run 'Create Reference Vertices' first.")
             return {'CANCELLED'}
 
         # Build mapping: { bone_name: {"HEAD": world_co, "TAIL": world_co} }
@@ -283,6 +300,8 @@ class BONE_SYNC_OT_update_bones(bpy.types.Operator):
             self.report({'ERROR'}, "No reference vertices found on the mesh.")
             return {'CANCELLED'}
 
+        print(refs)
+
         # Switch to Armature Edit Mode and apply positions
         prev_active = context.view_layer.objects.active
         prev_mode = get_mode(prev_active)
@@ -302,9 +321,20 @@ class BONE_SYNC_OT_update_bones(bpy.types.Operator):
             arm_inv = arm_obj.matrix_world.inverted()
 
             for eb in arm_obj.data.edit_bones:
-                data = refs.get(eb.name)
+
+                name = eb.name
+                if prefer_stripped and not name.startswith("DEF-"):
+                    name = 'DEF-' + eb.name
+
+                data = refs.get(name)
+
                 if not data:
+                    data = refs.get(eb.name)
+
+                if not data:
+                    print(f"Not found: {eb.name}")
                     continue
+
                 if "HEAD" in data:
                     eb.head = arm_inv @ data["HEAD"]
                 if "TAIL" in data:

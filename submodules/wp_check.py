@@ -928,10 +928,10 @@ class WPCheckBatchRename(bpy.types.Operator):
         box.label(text="Groups: ( ) and \\1, \\2 ...")
 
     def execute(self, context):
-        obj = context.object
+        active_obj = context.object
         props = context.scene.wp_check_props
 
-        if not obj or not self.search:
+        if not self.search:
             return {'CANCELLED'}
 
         # Compile regex
@@ -953,20 +953,30 @@ class WPCheckBatchRename(bpy.types.Operator):
             self.report({'WARNING'}, "No groups selected in the list")
             return {'CANCELLED'}
 
-        mode = obj.mode
+        mode = active_obj.mode
         bpy.ops.object.mode_set(mode='OBJECT')
 
-        renamed_count = 0
+        renamed_total = 0
+        obj_count = 0
 
-        # Rename only selected vertex groups
-        for vg in obj.vertex_groups:
-            if vg.index in selected_groups:
-                new_name = pattern.sub(self.replace, vg.name)
-                if new_name != vg.name:
-                    vg.name = new_name
-                    renamed_count += 1
+        for obj in context.selected_objects:
+            if obj.type != 'MESH':
+                continue
+            renamed_count = 0
 
-        self.report({'INFO'}, f"Renamed {renamed_count} vertex groups")
+            # Rename only selected vertex groups
+            for vg in obj.vertex_groups:
+                if vg.index in selected_groups:
+                    new_name = pattern.sub(self.replace, vg.name)
+                    if new_name != vg.name:
+                        vg.name = new_name
+                        renamed_count += 1
+            if renamed_count > 0:
+                obj_count += 1
+                renamed_total += renamed_count
+
+        self.report(
+            {'INFO'}, f"Renamed {renamed_count} vertex groups on {obj_count} object(s)")
 
         bpy.ops.object.mode_set(mode=mode)
         bpy.ops.object.wpcheck_evaluate()

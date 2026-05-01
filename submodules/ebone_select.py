@@ -62,6 +62,8 @@ class ARMATURE_OT_extend_children(bpy.types.Operator):
         # select them
         for child in to_select:
             child.select = True
+            child.select_head = True
+            child.select_tail = True
         return {'FINISHED'}
     
     @classmethod
@@ -85,6 +87,8 @@ class ARMATURE_OT_extend_parents(bpy.types.Operator):
 
         for parent in to_select:
             parent.select = True
+            parent.select_head = True
+            parent.select_tail = True
         return {'FINISHED'}
 
     @classmethod

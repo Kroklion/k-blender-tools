@@ -1,7 +1,6 @@
 import bpy
 import gpu
 import mathutils
-from .. import log
 
 bl_info = {
     "name": "Edit Bone Slide",
@@ -136,9 +135,7 @@ class BoneSlideOperator(bpy.types.Operator):
             rv3d = context.region_data
 
             zoom_factor = rv3d.view_distance
-            
-            log.info(f"Zoomf {zoom_factor}")
-            
+
             if event.shift:
                 slide_factor = fine_base * zoom_factor
             else:

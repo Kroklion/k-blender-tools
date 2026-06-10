@@ -24,6 +24,7 @@ Each submodule is self‑contained and exposes its own operators, panels, and ho
 | **shape_tools.py**          | Tools related to shape keys                       | Properties Editor > Object Data Properties (Mesh) > Shape Keys > 'Shape Key Specials' dropdown |
 | **to_rigify.py** (Experimental) | Map imported rigs to Rigify metarigs          | Sidebar > Rigify Tab |
 | **vgroup_show_hide.py**     | Show/Hide/Solo vertex groups                      | Properties > Object Data > Vertex Groups Panel |
+| **weights_resym.py**        | Symmetrizes vertex weights based on mesh topology | 3D View (Weight Paint Mode) > Weights |
 | **wp_check.py**             | Inspect and manage vertex group weights           | Sidebar > Edit Tab > WPCheck Panel |
 | **wp_copy.py**              | Sync overlapping deforming meshes (WPSync)        | Sidebar > Edit Tab > WPSync Panel |
 | **wp_mask.py**              | Weight paint masking tools                        | M (Mask From Bones), Ctrl+Numpad+ (Grow), Ctrl+Numpad- (Shrink) |
@@ -218,6 +219,14 @@ Selects edges which Blender’s *Tris to Quads* operator would dissolve—withou
 **Vertex Group Show/Hide/Solo**  
 - Adds buttons to the Vertex Groups panel: Show, Hide, Solo active group.  
 - Location: *Properties > Object Data > Vertex Groups Panel*.
+- Category: Mesh.
+
+### `weights_resym.py`
+**Vertex Weights Symmetrizer**  
+- Symmetrizes vertex weights based on mesh topology rather than position.
+- Features: Supports active, selected, or all deform bone groups. Mirrors L/R bones and symmetrizes center bones.
+- Location: *3D View (Weight Paint Mode) > Weights > Topology Weight Resymmetrize*.  
+- Available in Weight Paint Mode.  
 - Category: Mesh.
 
 ### `wp_check.py`

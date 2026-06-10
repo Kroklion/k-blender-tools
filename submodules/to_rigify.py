@@ -6,7 +6,8 @@ import json
 import bpy, os, json, requests
 from bpy.props import StringProperty, BoolProperty
 from bpy.types import Operator, Panel, PropertyGroup, AddonPreferences
-from collections import defaultdict
+from collections import defaultdict, Counter
+
 
 bl_info = {
     "name": "Rigify Bone Mapper (Experimental)",
@@ -248,7 +249,12 @@ class RBM_OT_ApplyMapping(Operator):
 
         # 2.2 "rigify" must be unique
         rigify_list = [e["rigify"] for e in mapping]
-        if len(rigify_list) != len(set(rigify_list)):
+        counts = Counter(rigify_list)
+        duplicates = [item for item, count in counts.items() if count > 1]
+
+        if len(duplicates) > 0:
+            # if len(rigify_list) != len(set(rigify_list)):
+            print(f"Duplicated rigify bones: {duplicates}")
             self.report(
                 {'ERROR'}, "'rigify' entries in mapping are not unique.")
             return {'CANCELLED'}
@@ -378,7 +384,7 @@ class RBM_OT_TransferMeshWeights(Operator):
 
     prefix: bpy.props.StringProperty(
         name="DEF Prefix",
-        default=".",
+        default="DEF-",
         description="Prefix to apply to the renamed vertex groups"
     )
 

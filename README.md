@@ -173,7 +173,7 @@ Projects an entire bone chain onto a plane, ensuring clean planar alignment for 
 - Operators:  
   - Merge by Distance Preview
     - Location: *3D View > Edit Mode (Mesh) > Merge Menu* or **M** hotkey
-  - Select UV Island Borders – Selects all edges and vertices that enclose the UV islands."
+  - Select UV Island Borders – Selects all edges and vertices that enclose the UV islands.
     - Location: *3D View > Edit Mode (Mesh) > Select*
 - Category: Mesh.
 
@@ -185,8 +185,14 @@ Selects edges which Blender’s *Tris to Quads* operator would dissolve—withou
 - Using *Invert Selection* afterwards may highlight regions that *did not* convert cleanly.
 - Parameters for *Tris to Quads* are forwarded
 - Does **not** alter the original mesh.
-- **Location:** *3D View > Edit Mode > Face > Tris to Quads (Select Only)*  
-- **Category:** Mesh  
+- **Location:** *3D View > Edit Mode > Face > Tris to Quads (Select Only)*
+- **Category:** Mesh
+
+### `selection_mgr.py`
+**Selection Manager**  
+Store and restore mesh selection states using custom element layers. Shows and Hides the selections.
+- **Location:** *View3D (Mesh Edit Mode) > Sidebar > Item*
+- **Category:** Mesh
 
 ### `shape_tools.py`
 **Shape Key Tools**

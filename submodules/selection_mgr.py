@@ -17,9 +17,9 @@ bl_info = {
     "version": (1, 0),
     "blender": (3, 0, 0),
     "location": "View3D > Sidebar > Item",
-    "description":
-        ("Store and restore mesh selection states using custom element layers.\n",
-         "Shows and Hides the selections.\n",
+    "description": (
+        "Store and restore mesh selection states using custom element layers.\n"
+        "Shows and Hides the selections.\n"
     ),
     "category": "Mesh",
 }

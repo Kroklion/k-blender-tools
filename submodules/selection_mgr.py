@@ -90,6 +90,18 @@ def ensure_int_layer(bm: BMesh, names: tuple[str, str, str]):
     return v_layer, e_layer, f_layer
 
 
+def delete_layers(bm: BMesh, ssm_item):
+    v_layer = bm.verts.layers.int.get(ssm_item.layer_name_v)
+    if v_layer is not None:
+        bm.verts.layers.int.remove(v_layer)
+    e_layer = bm.edges.layers.int.get(ssm_item.layer_name_e)
+    if e_layer is not None:
+        bm.edges.layers.int.remove(e_layer)
+    f_layer = bm.faces.layers.int.get(ssm_item.layer_name_f)
+    if f_layer is not None:
+        bm.faces.layers.int.remove(f_layer)
+
+
 # ---------- Property Group for UI list ----------
 
 class SSM_Item(PropertyGroup):
@@ -129,6 +141,16 @@ class SSM_OT_add_selection(Operator):
         return context.mode == 'EDIT_MESH'
 
     def invoke(self, context, event):
+        obj = context.edit_object
+        mesh = obj.data
+
+        idx = mesh.ssm_index
+        if idx >= 0 and idx < len(mesh.ssm_items):
+            ssm_item: SSM_Item = mesh.ssm_items[idx]
+
+            self.name = ssm_item.display_name
+
+
         wm = context.window_manager
         return wm.invoke_props_dialog(self, width=300)
 
@@ -139,20 +161,6 @@ class SSM_OT_add_selection(Operator):
             return {'CANCELLED'}
 
         mode = detect_current_mode(context)
-        layer_names = encode_layer_name(self.name, mode)
-
-        v_layer, e_layer, f_layer = ensure_int_layer(bm, layer_names)
-
-        # Store selection on all element types
-        for v in bm.verts:
-            v[v_layer] = 1 if v.select else 0
-        for e in bm.edges:
-            e[e_layer] = 1 if e.select else 0
-        for f in bm.faces:
-            f[f_layer] = 1 if f.select else 0
-
-        bmesh.update_edit_mesh(
-            mesh=mesh, loop_triangles=False, destructive=False)
 
         # Update mesh collection for UI
         # check if already exists
@@ -175,10 +183,26 @@ class SSM_OT_add_selection(Operator):
 
             # Update active index
             mesh.ssm_index = insert_at
+        else:
+            delete_layers(bm, ssm_item)
 
         ssm_item.mode = mode
-        ssm_item.layer_name_v, ssm_item.layer_name_e, ssm_item.layer_name_f = layer_names
 
+        # Store selection on all element types
+        layer_names = encode_layer_name(self.name, mode)
+        v_layer, e_layer, f_layer = ensure_int_layer(bm, layer_names)
+
+        for v in bm.verts:
+            v[v_layer] = 1 if v.select else 0
+        for e in bm.edges:
+            e[e_layer] = 1 if e.select else 0
+        for f in bm.faces:
+            f[f_layer] = 1 if f.select else 0
+
+        bmesh.update_edit_mesh(
+            mesh=mesh, loop_triangles=False, destructive=False)
+
+        ssm_item.layer_name_v, ssm_item.layer_name_e, ssm_item.layer_name_f = layer_names
         return {'FINISHED'}
 
 
@@ -205,15 +229,7 @@ class SSM_OT_remove_selection(Operator):
 
         ssm_item: SSM_Item = mesh.ssm_items[idx]
 
-        v_layer = bm.verts.layers.int.get(ssm_item.layer_name_v)
-        if v_layer is not None:
-            bm.verts.layers.int.remove(v_layer)
-        e_layer = bm.edges.layers.int.get(ssm_item.layer_name_e)
-        if e_layer is not None:
-            bm.edges.layers.int.remove(e_layer)
-        f_layer = bm.faces.layers.int.get(ssm_item.layer_name_f)
-        if f_layer is not None:
-            bm.faces.layers.int.remove(f_layer)
+        delete_layers(bm, ssm_item)
 
         bmesh.update_edit_mesh(mesh, loop_triangles=False, destructive=False)
 

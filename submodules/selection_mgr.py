@@ -162,10 +162,19 @@ class SSM_OT_add_selection(Operator):
                 ssm_item = item
 
         if not ssm_item:
-            ssm_item = mesh.ssm_items.add()
+            items = mesh.ssm_items
+            idx = mesh.ssm_index
+
+            # Add new item at end
+            ssm_item = items.add()
             ssm_item.display_name = self.name
-            # index to end where it was appended
-            mesh.ssm_index = len(mesh.ssm_items) - 1
+
+            # Insert below current index
+            insert_at = idx + 1 if idx >= 0 else len(items) - 1
+            items.move(len(items) - 1, insert_at)
+
+            # Update active index
+            mesh.ssm_index = insert_at
 
         ssm_item.mode = mode
         ssm_item.layer_name_v, ssm_item.layer_name_e, ssm_item.layer_name_f = layer_names
@@ -438,6 +447,55 @@ class SSM_OT_unhide_selection(Operator_Common):
                 if f[f_layer] == 1:
                     f.hide = False
 
+# List Operators
+
+
+class SSM_OT_move_up(Operator):
+    bl_idname = "mesh.ssm_move_up"
+    bl_label = "Move Selection State Up"
+    bl_description = "Move the selected selection state up"
+
+    @classmethod
+    def poll(cls, context):
+        obj = context.edit_object
+        return obj and obj.type == 'MESH' and context.mode == 'EDIT_MESH'
+
+    def execute(self, context):
+        me = context.edit_object.data
+        items = me.ssm_items
+        idx = me.ssm_index
+
+        if idx <= 0:
+            return {'CANCELLED'}
+
+        items.move(idx, idx - 1)
+        me.ssm_index = idx - 1
+        return {'FINISHED'}
+
+
+class SSM_OT_move_down(Operator):
+    bl_idname = "mesh.ssm_move_down"
+    bl_label = "Move Selection State Down"
+    bl_description = "Move the selected selection state down"
+
+    @classmethod
+    def poll(cls, context):
+        obj = context.edit_object
+        return obj and obj.type == 'MESH' and context.mode == 'EDIT_MESH'
+
+    def execute(self, context):
+        me = context.edit_object.data
+        items = me.ssm_items
+        idx = me.ssm_index
+
+        if idx < 0 or idx >= len(items) - 1:
+            return {'CANCELLED'}
+
+        items.move(idx, idx + 1)
+        me.ssm_index = idx + 1
+        return {'FINISHED'}
+
+
 
 # ---------- Panel ----------
 
@@ -467,6 +525,9 @@ class VIEW3D_PT_selstates_panel(Panel):
         col = row.column(align=True)
         col.operator("mesh.ssm_add_selection", icon='ADD', text="")
         col.operator("mesh.ssm_remove_selection", icon='REMOVE', text="")
+        col.separator()
+        col.operator("mesh.ssm_move_up", icon='TRIA_UP', text="")
+        col.operator("mesh.ssm_move_down", icon='TRIA_DOWN', text="")
         
         layout.prop(context.scene, "ssm_restore_mode")
 
@@ -499,6 +560,8 @@ classes = (
     SSM_OT_hide_selection,
     SSM_OT_unhide_selection,
     SSM_OT_clear_all,
+    SSM_OT_move_down,
+    SSM_OT_move_up,
     VIEW3D_PT_selstates_panel,
 )
 

@@ -1,3 +1,4 @@
+from bmesh.types import BMesh
 from bpy.props import (
     StringProperty,
     IntProperty,
@@ -12,7 +13,7 @@ from bpy.types import (
 import bmesh
 import bpy
 bl_info = {
-    "name": "Selection States Manager",
+    "name": "Selections Manager",
     "author": "Generated",
     "version": (1, 0),
     "blender": (3, 0, 0),
@@ -41,21 +42,14 @@ def get_bmesh_and_mesh(context):
     return bm, me
 
 
-def encode_layer_name(user_name: str, mode: str) -> str:
-    # sanitize user_name minimally (replace :: to avoid collisions)
+def encode_layer_name(user_name: str, mode: str) -> tuple[str, str, str]:
+    # base name, without domain suffix
     safe_name = user_name.replace("::", "_")
-    return f"{LAYER_PREFIX}{safe_name}{MODE_TOKEN}{mode}"
-
-
-def decode_layer_name(layer_name: str):
-    # returns (user_name, mode) or (None, None) if not our prefix
-    if not layer_name.startswith(LAYER_PREFIX):
-        return None, None
-    rest = layer_name[len(LAYER_PREFIX):]
-    if MODE_TOKEN in rest:
-        name_part, mode_part = rest.split(MODE_TOKEN, 1)
-        return name_part, mode_part
-    return rest, "UNKNOWN"
+    return (
+        f"{LAYER_PREFIX}{safe_name}{MODE_TOKEN}{mode}_v",
+        f"{LAYER_PREFIX}{safe_name}{MODE_TOKEN}{mode}_e",
+        f"{LAYER_PREFIX}{safe_name}{MODE_TOKEN}{mode}_f"
+    )
 
 
 def detect_current_mode(context):
@@ -70,7 +64,7 @@ def detect_current_mode(context):
     return "VERT"
 
 
-def set_selection_mode(context, mode):
+def set_selection_mode(context, mode: str):
     if mode == "VERT":
         context.tool_settings.mesh_select_mode = (True, False, False)
     elif mode == "EDGE":
@@ -79,52 +73,30 @@ def set_selection_mode(context, mode):
         context.tool_settings.mesh_select_mode = (False, False, True)
 
 
-def ensure_int_layer(bm, layer_name):
-    # Ensure int layer exists for verts/edges/faces; return tuple of layers (v_layer, e_layer, f_layer)
-    v_layer = bm.verts.layers.int.get(layer_name)
+def ensure_int_layer(bm: BMesh, names: tuple[str, str, str]):
+    v_name, e_name, f_name = names
+    v_layer = bm.verts.layers.int.get(v_name)
     if v_layer is None:
-        v_layer = bm.verts.layers.int.new(layer_name)
-    e_layer = bm.edges.layers.int.get(layer_name)
+        v_layer = bm.verts.layers.int.new(v_name)
+
+    e_layer = bm.edges.layers.int.get(e_name)
     if e_layer is None:
-        e_layer = bm.edges.layers.int.new(layer_name)
-    f_layer = bm.faces.layers.int.get(layer_name)
+        e_layer = bm.edges.layers.int.new(e_name)
+
+    f_layer = bm.faces.layers.int.get(f_name)
     if f_layer is None:
-        f_layer = bm.faces.layers.int.new(layer_name)
+        f_layer = bm.faces.layers.int.new(f_name)
+
     return v_layer, e_layer, f_layer
-
-
-def remove_int_layer_if_exists(bm, layer_name):
-    # Remove layer from verts/edges/faces if present
-    v_layer = bm.verts.layers.int.get(layer_name)
-    if v_layer is not None:
-        bm.verts.layers.int.remove(v_layer)
-    e_layer = bm.edges.layers.int.get(layer_name)
-    if e_layer is not None:
-        bm.edges.layers.int.remove(e_layer)
-    f_layer = bm.faces.layers.int.get(layer_name)
-    if f_layer is not None:
-        bm.faces.layers.int.remove(f_layer)
-
-
-def gather_ssm_layers(bm):
-    # Return a dict mapping layer_name -> (user_name, mode)
-    names = set()
-    names.update(bm.verts.layers.int.keys())
-    names.update(bm.edges.layers.int.keys())
-    names.update(bm.faces.layers.int.keys())
-    result = {}
-    for n in names:
-        if n.startswith(LAYER_PREFIX):
-            user_name, mode = decode_layer_name(n)
-            result[n] = (user_name, mode)
-    return result
 
 
 # ---------- Property Group for UI list ----------
 
 class SSM_Item(PropertyGroup):
     display_name: StringProperty(name="Name")
-    layer_name: StringProperty(name="LayerName")
+    layer_name_v: StringProperty(name="LayerNameVertex")
+    layer_name_e: StringProperty(name="LayerNameEdge")
+    layer_name_f: StringProperty(name="LayerNameFace")
     mode: StringProperty(name="Mode")
 
 
@@ -161,15 +133,15 @@ class SSM_OT_add_selection(Operator):
         return wm.invoke_props_dialog(self, width=300)
 
     def execute(self, context):
-        bm, me = get_bmesh_and_mesh(context)
+        bm, mesh = get_bmesh_and_mesh(context)
         if bm is None:
             self.report({'ERROR'}, "No edit mesh found")
             return {'CANCELLED'}
 
         mode = detect_current_mode(context)
-        layer_name = encode_layer_name(self.name, mode)
+        layer_names = encode_layer_name(self.name, mode)
 
-        v_layer, e_layer, f_layer = ensure_int_layer(bm, layer_name)
+        v_layer, e_layer, f_layer = ensure_int_layer(bm, layer_names)
 
         # Store selection on all element types
         for v in bm.verts:
@@ -179,12 +151,25 @@ class SSM_OT_add_selection(Operator):
         for f in bm.faces:
             f[f_layer] = 1 if f.select else 0
 
-        bmesh.update_edit_mesh(me, loop_triangles=False, destructive=False)
+        bmesh.update_edit_mesh(
+            mesh=mesh, loop_triangles=False, destructive=False)
 
         # Update mesh collection for UI
-        update_mesh_selstates_collection(context)
+        # check if already exists
+        ssm_item: None | SSM_Item = None
+        for item in mesh.ssm_items:
+            if item.display_name == self.name:
+                ssm_item = item
 
-        self.report({'INFO'}, f"Stored selection '{self.name}' ({mode})")
+        if not ssm_item:
+            ssm_item = mesh.ssm_items.add()
+            ssm_item.display_name = self.name
+            # index to end where it was appended
+            mesh.ssm_index = len(mesh.ssm_items) - 1
+
+        ssm_item.mode = mode
+        ssm_item.layer_name_v, ssm_item.layer_name_e, ssm_item.layer_name_f = layer_names
+
         return {'FINISHED'}
 
 
@@ -199,28 +184,89 @@ class SSM_OT_remove_selection(Operator):
         return context.mode == 'EDIT_MESH'
 
     def execute(self, context):
-        bm, me = get_bmesh_and_mesh(context)
+        bm, mesh = get_bmesh_and_mesh(context)
         if bm is None:
             self.report({'ERROR'}, "No edit mesh found")
             return {'CANCELLED'}
 
-        mesh = me
         idx = mesh.ssm_index
         if idx < 0 or idx >= len(mesh.ssm_items):
             self.report({'ERROR'}, "No selection state highlighted")
             return {'CANCELLED'}
 
-        item = mesh.ssm_items[idx]
-        layer_name = item.layer_name
+        ssm_item: SSM_Item = mesh.ssm_items[idx]
 
-        remove_int_layer_if_exists(bm, layer_name)
-        bmesh.update_edit_mesh(me, loop_triangles=False, destructive=False)
+        v_layer = bm.verts.layers.int.get(ssm_item.layer_name_v)
+        if v_layer is not None:
+            bm.verts.layers.int.remove(v_layer)
+        e_layer = bm.edges.layers.int.get(ssm_item.layer_name_e)
+        if e_layer is not None:
+            bm.edges.layers.int.remove(e_layer)
+        f_layer = bm.faces.layers.int.get(ssm_item.layer_name_f)
+        if f_layer is not None:
+            bm.faces.layers.int.remove(f_layer)
 
-        update_mesh_selstates_collection(context)
+        bmesh.update_edit_mesh(mesh, loop_triangles=False, destructive=False)
 
-        self.report({'INFO'}, f"Removed selection state '{item.display_name}'")
+        # update UI list
+        mesh.ssm_items.remove(mesh.ssm_index)
+
+        # index to previous if not first
+        if mesh.ssm_index > 0:
+            mesh.ssm_index -= 1
+
         return {'FINISHED'}
-    
+
+
+class SSM_OT_clear_all(Operator):
+    bl_idname = "mesh.ssm_clear_all"
+    bl_label = "Clear All Selection State Layers"
+    bl_description = "Remove all mesh custom layers created by the Selection States Manager"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    @classmethod
+    def poll(cls, context):
+        return context.mode == 'EDIT_MESH'
+
+    def execute(self, context):
+        bm, mesh = get_bmesh_and_mesh(context)
+        if bm is None:
+            self.report({'ERROR'}, "No edit mesh found")
+            return {'CANCELLED'}
+
+        # Collect all layer names across domains
+        vert_layers = list(bm.verts.layers.int.keys())
+        edge_layers = list(bm.edges.layers.int.keys())
+        face_layers = list(bm.faces.layers.int.keys())
+
+        # Remove only layers with our prefix
+        for name in vert_layers:
+            if name.startswith(LAYER_PREFIX):
+                v = bm.verts.layers.int.get(name)
+                if v:
+                    bm.verts.layers.int.remove(v)
+
+        for name in edge_layers:
+            if name.startswith(LAYER_PREFIX):
+                e = bm.edges.layers.int.get(name)
+                if e:
+                    bm.edges.layers.int.remove(e)
+
+        for name in face_layers:
+            if name.startswith(LAYER_PREFIX):
+                f = bm.faces.layers.int.get(name)
+                if f:
+                    bm.faces.layers.int.remove(f)
+
+        bmesh.update_edit_mesh(mesh, loop_triangles=False, destructive=False)
+
+        # Clear UI list
+        mesh.ssm_items.clear()
+        mesh.ssm_index = 0
+
+        self.report({'INFO'}, "All Selection State layers removed")
+        return {'FINISHED'}
+
 
 class Operator_Common(Operator):
     @classmethod
@@ -228,32 +274,29 @@ class Operator_Common(Operator):
         return context.mode == 'EDIT_MESH'
     
     def execute(self, context):
-        bm, me = get_bmesh_and_mesh(context)
+        bm, mesh = get_bmesh_and_mesh(context)
         if bm is None:
             self.report({'ERROR'}, "No edit mesh found")
             return {'CANCELLED'}
 
-        mesh = me
         idx = mesh.ssm_index
         if idx < 0 or idx >= len(mesh.ssm_items):
             self.report({'ERROR'}, "No selection state highlighted")
             return {'CANCELLED'}
 
-        item = mesh.ssm_items[idx]
-        layer_name = item.layer_name
+        ssm_item: SSM_Item = mesh.ssm_items[idx]
 
-        v_layer = bm.verts.layers.int.get(layer_name)
-        e_layer = bm.edges.layers.int.get(layer_name)
-        f_layer = bm.faces.layers.int.get(layer_name)
+        v_layer = bm.verts.layers.int.get(ssm_item.layer_name_v)
+        e_layer = bm.edges.layers.int.get(ssm_item.layer_name_e)
+        f_layer = bm.faces.layers.int.get(ssm_item.layer_name_f)
 
-        self.execute_logic(context, bm, layer_name, v_layer, e_layer, f_layer)
+        self.execute_logic(context, bm, v_layer, e_layer, f_layer)
         
         # Optionally restore selection mode
         if context.scene.ssm_restore_mode:
-            _, mode = decode_layer_name(layer_name)
-            set_selection_mode(context, mode)
+            set_selection_mode(context, item.mode)
 
-        bmesh.update_edit_mesh(me, loop_triangles=False, destructive=False)
+        bmesh.update_edit_mesh(mesh, loop_triangles=False, destructive=False)
         return {'FINISHED'}
 
 
@@ -263,7 +306,7 @@ class SSM_OT_restore_absolute(Operator_Common):
     bl_description = "Replace current selection with the stored selection (and optionally restore selection mode)"
     bl_options = {'REGISTER', 'UNDO'}
 
-    def execute_logic(self, context, bm, layer_name, v_layer, e_layer, f_layer):
+    def execute_logic(self, context, bm, v_layer, e_layer, f_layer):
         # Deselect all first
         bpy.ops.mesh.select_all(action='DESELECT')
 
@@ -288,7 +331,7 @@ class SSM_OT_add_to_selection(Operator_Common):
     bl_description = "Add the stored selection elements to the current selection"
     bl_options = {'REGISTER', 'UNDO'}
 
-    def execute_logic(self, context, bm, layer_name, v_layer, e_layer, f_layer):
+    def execute_logic(self, context, bm, v_layer, e_layer, f_layer):
         if v_layer:
             for v in bm.verts:
                 if v[v_layer] == 1:
@@ -309,7 +352,7 @@ class SSM_OT_deselect_from_selection(Operator_Common):
     bl_description = "Deselect elements that are part of the stored selection from the current selection"
     bl_options = {'REGISTER', 'UNDO'}
 
-    def execute_logic(self, context, bm, layer_name, v_layer, e_layer, f_layer):
+    def execute_logic(self, context, bm, v_layer, e_layer, f_layer):
         if v_layer:
             for v in bm.verts:
                 if v[v_layer] == 1:
@@ -330,7 +373,7 @@ class SSM_OT_solo_selection(Operator_Common):
     bl_description = "Hide all geometry except the stored selection"
     bl_options = {'REGISTER', 'UNDO'}
 
-    def execute_logic(self, context, bm, layer_name, v_layer, e_layer, f_layer):
+    def execute_logic(self, context, bm, v_layer, e_layer, f_layer):
         # Hide everything first
         for v in bm.verts:
             v.hide = True
@@ -360,7 +403,7 @@ class SSM_OT_hide_selection(Operator_Common):
     bl_description = "Hide the stored selection but keep other hide states unchanged"
     bl_options = {'REGISTER', 'UNDO'}
 
-    def execute_logic(self, context, bm, layer_name, v_layer, e_layer, f_layer):
+    def execute_logic(self, context, bm, v_layer, e_layer, f_layer):
         if v_layer:
             for v in bm.verts:
                 if v[v_layer] == 1:
@@ -381,7 +424,7 @@ class SSM_OT_unhide_selection(Operator_Common):
     bl_description = "Unhide the stored selection"
     bl_options = {'REGISTER', 'UNDO'}
 
-    def execute_logic(self, context, bm, layer_name, v_layer, e_layer, f_layer):
+    def execute_logic(self, context, bm, v_layer, e_layer, f_layer):
         if v_layer:
             for v in bm.verts:
                 if v[v_layer] == 1:
@@ -394,33 +437,6 @@ class SSM_OT_unhide_selection(Operator_Common):
             for f in bm.faces:
                 if f[f_layer] == 1:
                     f.hide = False
-
-
-
-# ---------- Helper to keep mesh collection in sync ----------
-
-def update_mesh_selstates_collection(context):
-    bm, me = get_bmesh_and_mesh(context)
-    if bm is None:
-        return
-
-    mesh = me
-    mesh.ssm_items.clear()
-
-    layers = gather_ssm_layers(bm)
-    # Sort by user name for stable order
-    sorted_items = sorted(
-        layers.items(), key=lambda kv: kv[1][0].lower() if kv[1][0] else kv[0])
-
-    for layer_name, (user_name, mode) in sorted_items:
-        item = mesh.ssm_items.add()
-        item.display_name = user_name
-        item.layer_name = layer_name
-        item.mode = mode
-
-    # clamp index
-    if mesh.ssm_index >= len(mesh.ssm_items):
-        mesh.ssm_index = max(0, len(mesh.ssm_items) - 1)
 
 
 # ---------- Panel ----------
@@ -457,10 +473,9 @@ class VIEW3D_PT_selstates_panel(Panel):
         # Buttons for actions
         layout.separator()
         row2 = layout.row(align=True)
-        row2.operator("mesh.ssm_restore_absolute", text="Restore")
-        row2.operator("mesh.ssm_add_to_selection", text="Additive")
-        row2 = layout.row(align=True)
-        row2.operator("mesh.ssm_deselect_from_selection", text="Subtractive")
+        row2.operator("mesh.ssm_restore_absolute", text="Apply")
+        row2.operator("mesh.ssm_add_to_selection", text="Add")
+        row2.operator("mesh.ssm_deselect_from_selection", text="Subtract")
         
         layout.separator(factor=1.5)
         row = layout.row(align=True)
@@ -483,6 +498,7 @@ classes = (
     SSM_OT_solo_selection,
     SSM_OT_hide_selection,
     SSM_OT_unhide_selection,
+    SSM_OT_clear_all,
     VIEW3D_PT_selstates_panel,
 )
 

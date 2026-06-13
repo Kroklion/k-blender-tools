@@ -28,6 +28,7 @@ Each submodule is self‑contained and exposes its own operators, panels, and ho
 | **wp_check.py**             | Inspect and manage vertex group weights           | Sidebar > Edit Tab > WPCheck Panel |
 | **wp_copy.py**              | Sync overlapping deforming meshes (WPSync)        | Sidebar > Edit Tab > WPSync Panel |
 | **wp_mask.py**              | Weight paint masking tools                        | M (Mask From Bones), Ctrl+Numpad+ (Grow), Ctrl+Numpad- (Shrink) |
+| **selection_mgr.py**        | Save/Restore/Hide/Unhide the mesh selection       | View3D > Sidebar > Item |
 | **select_mode_toggle.py**   | Cycle selection/masking modes with Mouse Button 5 | Edit Mode (Vertex/Edge/Face), Weight/Vertex/Texture Paint Modes |
 | **centerline_align.py**     | Align mesh to global axis using best-fit plane    | View3D > Edit Mode > Mesh > Align Selected to Plane |
 | **shape_key_edit_hint.py**  | Show on‑screen hint when editing non‑Basis shape keys | 3D View (Edit/Sculpt Modes) |

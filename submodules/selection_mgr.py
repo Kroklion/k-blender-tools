@@ -1,3 +1,5 @@
+from bpy.types import Mesh
+
 from bmesh.types import BMesh
 from bpy.props import (
     StringProperty,
@@ -463,9 +465,169 @@ class SSM_OT_unhide_selection(Operator_Common):
                 if f[f_layer] == 1:
                     f.hide = False
 
+# Operators for weight paint mode
+
+
+class Operator_WP_Common(Operator):
+    @classmethod
+    def poll(cls, context):
+        return context.mode == 'PAINT_WEIGHT'
+
+    def execute(self, context):
+        mesh: Mesh = context.object.data
+
+        idx = mesh.ssm_index
+        if idx < 0 or idx >= len(mesh.ssm_items):
+            self.report({'ERROR'}, "No selection state highlighted")
+            return {'CANCELLED'}
+
+        ssm_item: SSM_Item = mesh.ssm_items[idx]
+
+        v_attr = mesh.attributes.get(ssm_item.layer_name_v)
+        e_attr = mesh.attributes.get(ssm_item.layer_name_e)
+        f_attr = mesh.attributes.get(ssm_item.layer_name_f)
+
+        # Snapshot values into plain lists to avoid invalidation
+        # This happened when loading a blend and the object was not in edit mode
+        v_vals = [d.value for d in v_attr.data] if v_attr else None
+        e_vals = [d.value for d in e_attr.data] if e_attr else None
+        f_vals = [d.value for d in f_attr.data] if f_attr else None
+
+        self.execute_logic(context, mesh, v_vals, e_vals, f_vals)
+
+        mesh.update()
+
+        return {'FINISHED'}
+
+
+class SSM_OT_solo_selection_WP(Operator_WP_Common):
+    bl_idname = "mesh.ssm_solo_selection_wp"
+    bl_label = "Solo Selection"
+    bl_description = "Hide all geometry except the stored selection"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    def execute_logic(self, context, mesh, v_vals, e_vals, f_vals):
+        # Unhide only stored elements
+        for v in mesh.vertices:
+            v.hide = False if v_vals[v.index] == 1 else True
+
+        for e in mesh.edges:
+            e.hide = False if e_vals[e.index] == 1 else True
+
+        for f in mesh.polygons:
+            f.hide = False if f_vals[f.index] == 1 else True
+
+
+class SSM_OT_hide_selection_WP(Operator_WP_Common):
+    bl_idname = "mesh.ssm_hide_selection_wp"
+    bl_label = "Hide Selection"
+    bl_description = "Hide the stored selection but keep other hide states unchanged"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    def execute_logic(self, context, mesh, v_vals, e_vals, f_vals):
+
+        # Hide only stored vertices
+        for v in mesh.vertices:
+            if v_vals[v.index] == 1:
+                v.hide = True
+
+        # Hide only stored edges
+        for e in mesh.edges:
+            if e_vals[e.index] == 1:
+                e.hide = True
+
+        # Hide only stored faces
+        for f in mesh.polygons:
+            if f_vals[f.index] == 1:
+                f.hide = True
+
+
+class SSM_OT_unhide_selection_WP(Operator_WP_Common):
+    bl_idname = "mesh.ssm_unhide_selection_wp"
+    bl_label = "Unhide Selection"
+    bl_description = "Unhide the stored selection"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    def execute_logic(self, context, mesh, v_vals, e_vals, f_vals):
+
+        # Unhide only stored elements
+        for v in mesh.vertices:
+            if v_vals[v.index] == 1:
+                v.hide = False
+
+        for e in mesh.edges:
+            if e_vals[e.index] == 1:
+                e.hide = False
+
+        for f in mesh.polygons:
+            if f_vals[f.index] == 1:
+                f.hide = False
+
+
+class SSM_OT_apply_selection_WP(Operator_WP_Common):
+    bl_idname = "mesh.ssm_apply_selection_wp"
+    bl_label = "Solo Selection"
+    bl_description = "Hide all geometry except the stored selection"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    def execute_logic(self, context, mesh, v_vals, e_vals, f_vals):
+
+        # Select only stored elements
+        for v in mesh.vertices:
+            v.select = True if v_vals[v.index] == 1 else False
+
+        for e in mesh.edges:
+            e.select = True if e_vals[e.index] == 1 else False
+
+        for f in mesh.polygons:
+            f.select = True if f_vals[f.index] == 1 else False
+
+
+class SSM_OT_add_to_selection_WP(Operator_WP_Common):
+    bl_idname = "mesh.ssm_add_to_selection_wp"
+    bl_label = "Add Stored to Selection"
+    bl_description = "Add the stored selection elements to the current selection"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    def execute_logic(self, context, mesh, v_vals, e_vals, f_vals):
+
+        # Add stored elements
+        for v in mesh.vertices:
+            if v_vals[v.index] == 1:
+                v.select = True
+
+        for e in mesh.edges:
+            if e_vals[e.index] == 1:
+                e.select = True
+
+        for f in mesh.polygons:
+            if f_vals[f.index] == 1:
+                f.select = True
+
+
+class SSM_OT_deselect_from_selection_WP(Operator_WP_Common):
+    bl_idname = "mesh.ssm_deselect_from_selection_wp"
+    bl_label = "Subtract Stored from Selection"
+    bl_description = "Deselect elements that are part of the stored selection"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    def execute_logic(self, context, mesh, v_vals, e_vals, f_vals):
+
+        # Deselect stored elements
+        for v in mesh.vertices:
+            if v_vals[v.index] == 1:
+                v.select = False
+
+        for e in mesh.edges:
+            if e_vals[e.index] == 1:
+                e.select = False
+
+        for f in mesh.polygons:
+            if f_vals[f.index] == 1:
+                f.select = False
+
+
 # List Operators
-
-
 class SSM_OT_move_up(Operator):
     bl_idname = "mesh.ssm_move_up"
     bl_label = "Move Selection State Up"
@@ -474,7 +636,7 @@ class SSM_OT_move_up(Operator):
     @classmethod
     def poll(cls, context):
         obj = context.edit_object
-        return obj and obj.type == 'MESH' and context.mode == 'EDIT_MESH'
+        return obj and obj.type == 'MESH'
 
     def execute(self, context):
         me = context.edit_object.data
@@ -497,7 +659,7 @@ class SSM_OT_move_down(Operator):
     @classmethod
     def poll(cls, context):
         obj = context.edit_object
-        return obj and obj.type == 'MESH' and context.mode == 'EDIT_MESH'
+        return obj and obj.type == 'MESH'
 
     def execute(self, context):
         me = context.edit_object.data
@@ -524,11 +686,13 @@ class VIEW3D_PT_selstates_panel(Panel):
 
     @classmethod
     def poll(cls, context):
-        return context.mode == 'EDIT_MESH'
+        return context.mode == 'EDIT_MESH' or context.mode == 'PAINT_WEIGHT'
 
     def draw(self, context):
         layout = self.layout
         obj = context.edit_object
+        if not obj:
+            obj = context.object
         if not obj or obj.type != 'MESH':
             layout.label(text="No mesh in edit mode")
             return
@@ -545,21 +709,31 @@ class VIEW3D_PT_selstates_panel(Panel):
         col.operator("mesh.ssm_move_up", icon='TRIA_UP', text="")
         col.operator("mesh.ssm_move_down", icon='TRIA_DOWN', text="")
         
-        layout.prop(context.scene, "ssm_restore_mode")
+        if context.mode == 'EDIT_MESH':
+            layout.prop(context.scene, "ssm_restore_mode")
 
-        # Buttons for actions
-        layout.separator()
-        row2 = layout.row(align=True)
-        row2.operator("mesh.ssm_restore_absolute", text="Apply")
-        row2.operator("mesh.ssm_add_to_selection", text="Add")
-        row2.operator("mesh.ssm_deselect_from_selection", text="Subtract")
-        
-        layout.separator(factor=1.5)
-        row = layout.row(align=True)
-        row.operator("mesh.ssm_solo_selection", text="Solo")
-        row.operator("mesh.ssm_hide_selection", text="Hide")
-        row.operator("mesh.ssm_unhide_selection", text="Unhide")
+            # Buttons for actions
+            layout.separator()
+            row = layout.row(align=True)
+            row.operator("mesh.ssm_restore_absolute", text="Apply")
+            row.operator("mesh.ssm_add_to_selection", text="Add")
+            row.operator("mesh.ssm_deselect_from_selection", text="Subtract")
 
+            row = layout.row(align=True)
+            row.operator("mesh.ssm_solo_selection", text="Solo")
+            row.operator("mesh.ssm_hide_selection", text="Hide")
+            row.operator("mesh.ssm_unhide_selection", text="Unhide")
+        else:
+            row = layout.row(align=True)
+            row.operator("mesh.ssm_apply_selection_wp", text="Apply")
+            row.operator("mesh.ssm_add_to_selection_wp", text="Add")
+            row.operator("mesh.ssm_deselect_from_selection_wp",
+                         text="Subtract")
+
+            row = layout.row(align=True)
+            row.operator("mesh.ssm_solo_selection_wp", text="Solo")
+            row.operator("mesh.ssm_hide_selection_wp", text="Hide")
+            row.operator("mesh.ssm_unhide_selection_wp", text="Unhide")
 
 
 # ---------- Registration ----------
@@ -578,6 +752,12 @@ classes = (
     SSM_OT_clear_all,
     SSM_OT_move_down,
     SSM_OT_move_up,
+    SSM_OT_solo_selection_WP,
+    SSM_OT_hide_selection_WP,
+    SSM_OT_unhide_selection_WP,
+    SSM_OT_apply_selection_WP,
+    SSM_OT_add_to_selection_WP,
+    SSM_OT_deselect_from_selection_WP,
     VIEW3D_PT_selstates_panel,
 )
 

@@ -321,7 +321,7 @@ class Operator_Common(Operator):
         
         # Optionally restore selection mode
         if context.scene.ssm_restore_mode:
-            set_selection_mode(context, item.mode)
+            set_selection_mode(context, ssm_item.mode)
 
         bmesh.update_edit_mesh(mesh, loop_triangles=False, destructive=False)
         return {'FINISHED'}

@@ -185,6 +185,10 @@ class SSM_OT_add_selection(Operator):
 
             # Update active index
             mesh.ssm_index = insert_at
+
+            # re-fetch the item after move
+            ssm_item = mesh.ssm_items[mesh.ssm_index]
+
         else:
             delete_layers(bm, ssm_item)
 

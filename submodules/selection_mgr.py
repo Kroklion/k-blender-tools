@@ -164,30 +164,39 @@ class SSM_OT_add_selection(Operator):
 
         mode = detect_current_mode(context)
 
+        items = mesh.ssm_items
+
         # Update mesh collection for UI
         # check if already exists
         ssm_item: None | SSM_Item = None
-        for item in mesh.ssm_items:
+        for item in items:
             if item.display_name == self.name:
                 ssm_item = item
 
         if not ssm_item:
-            items = mesh.ssm_items
+            # index range check
+            if len(items) == 0:
+                mesh.ssm_index = 0
+
+            elif len(items) <= mesh.ssm_index or mesh.ssm_index < 0:
+                mesh.ssm_index = len(items) - 1
+
             idx = mesh.ssm_index
 
-            # Add new item at end
+            # Add new item at end of list
             ssm_item = items.add()
             ssm_item.display_name = self.name
 
-            # Insert below current index
-            insert_at = idx + 1 if idx >= 0 else len(items) - 1
-            items.move(len(items) - 1, insert_at)
+            if len(items) > 1:
+                # move below current index
+                insert_at = idx + 1
+                items.move(len(items) - 1, insert_at)
 
-            # Update active index
-            mesh.ssm_index = insert_at
+                # Update active index
+                mesh.ssm_index = insert_at
 
-            # re-fetch the item after move
-            ssm_item = mesh.ssm_items[mesh.ssm_index]
+                # re-fetch the item after move
+                ssm_item = mesh.ssm_items[mesh.ssm_index]
 
         else:
             delete_layers(bm, ssm_item)

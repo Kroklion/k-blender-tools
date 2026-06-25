@@ -1,7 +1,7 @@
+from bpy.props import EnumProperty, StringProperty
 import bmesh
 import bpy
-
-from .. import log
+from bpy.types import Operator
 
 bl_info = {
     "name": "Shape Key Tools: Reset & Select Differences",
@@ -14,19 +14,18 @@ bl_info = {
         "- Reset the active shape key to match its reference (Basis or relative key) for selected vertices.\n"
         "- Select vertices that differ from the reference.\n"
         "- Reduce current selection to only vertices that differ from the reference.\n"
-        "- Transfer selected vertices from the active shape key into the Basis.\n"
-        "- Move selected verts from active shape key into a new shape key.\n"
-        "- Copy selected verts from active shape key into a new shape key.\n"
-        "- Copy selected vertices from the active shape key into the only muted shape key."
+        "- Transfer selected vertices from the active shape key into the Basis, and update all other shape keys.\n"
+        "- Copy/Move selected vertices from the active shape key into specific/all/new shape key(s).\n"
         "Object mode:\n"
-        "- Change the current shape key value to 1, keep the shape\n"
+        "- Normalize: Change the current shape key value to 1, keep the shape\n"
     ),
     "warning": "",
     "doc_url": "",
     "category": "Mesh",
 }
 
-class MESH_OT_reset_active_shapekey_to_reference(bpy.types.Operator):
+
+class MESH_OT_reset_active_shapekey_to_reference(Operator):
     """
     Reset the active shape key's coordinates to its reference for the selected vertices.
 
@@ -64,14 +63,6 @@ class MESH_OT_reset_active_shapekey_to_reference(bpy.types.Operator):
         me = obj.data
 
         keys = getattr(me, "shape_keys", None)
-        if not keys or not keys.key_blocks:
-            self.report({'ERROR'}, "Object has no shape keys.")
-            return {'CANCELLED'}
-
-        if not keys.use_relative:
-            self.report(
-                {'ERROR'}, "Absolute shape keys are not supported by this operator.")
-            return {'CANCELLED'}
 
         basis_key = keys.key_blocks[0]
         active_key = obj.active_shape_key
@@ -113,7 +104,7 @@ class MESH_OT_reset_active_shapekey_to_reference(bpy.types.Operator):
         return {'FINISHED'}
 
 
-class MESH_OT_select_shapekey_differences(bpy.types.Operator):
+class MESH_OT_select_shapekey_differences(Operator):
     """Select only vertices that differ from the base shape"""
 
     bl_idname = "mesh.select_shapekey_differences"
@@ -213,81 +204,7 @@ class MESH_OT_reduce_selection_to_shapekey_differences(MESH_OT_select_shapekey_d
         return self._select_differences(context, reduce=True)
 
 
-class MESH_OT_transfer_selected_to_basis(bpy.types.Operator):
-    """
-    Transfer selected vertices from the active shape key into the Basis.
-    """
-
-    bl_idname = "mesh.transfer_selected_to_basis_only"
-    bl_label = "Selected Verts to Basis Only"
-    bl_description = "Copy selected vertices from the active shape key into the Basis shape key. Other shape keys keep the old basis shape!"
-    bl_options = {'REGISTER', 'UNDO'}
-
-    @classmethod
-    def poll(cls, context):
-        obj = context.active_object
-        if not obj or obj.type != 'MESH':
-            return False
-        if context.mode != 'EDIT_MESH':
-            return False
-        me = obj.data
-        keys = getattr(me, "shape_keys", None)
-
-        return bool(keys and keys.key_blocks and obj.active_shape_key_index != 0 and keys.use_relative)
-
-    def execute(self, context):
-        obj = context.active_object
-        me = obj.data
-        keys = me.shape_keys
-
-        if not keys or not keys.key_blocks:
-            self.report({'ERROR'}, "Object has no shape keys.")
-            return {'CANCELLED'}
-
-        if not keys.use_relative:
-            self.report(
-                {'ERROR'}, "Absolute shape keys are not supported by this operator.")
-            return {'CANCELLED'}
-
-        basis_key = keys.key_blocks[0]
-        active_key = obj.active_shape_key
-
-        if active_key == basis_key:
-            self.report(
-                {'WARNING'}, "Active key is Basis; nothing to transfer.")
-            return {'CANCELLED'}
-
-        bm = bmesh.from_edit_mesh(me)
-
-        # Get bmesh layers for Basis and Active by index
-        basis_layer = bm.verts.layers.shape[0]
-        active_layer = bm.verts.layers.shape[obj.active_shape_key_index]
-
-        selected = 0
-        transferred = 0
-
-        for v in bm.verts:
-            if v.select:
-                selected += 1
-                src = v[active_layer]
-                dst = v[basis_layer]
-                if dst != src:
-                    v[basis_layer] = src.copy()
-                    transferred += 1
-
-        bmesh.update_edit_mesh(me, loop_triangles=False, destructive=False)
-
-        if selected == 0:
-            self.report(
-                {'WARNING'}, "No selected vertices. Select some vertices in Edit Mode and try again.")
-            return {'CANCELLED'}
-
-        self.report(
-            {'INFO'}, f"Transferred {transferred} vertices from '{active_key.name}' into Basis.")
-        return {'FINISHED'}
-
-
-class MESH_OT_transfer_selected_to_basis_propagate(bpy.types.Operator):
+class MESH_OT_transfer_selected_to_basis_propagate(Operator):
     """
     Transfer selected vertices from the active shape key into the Basis,
     and apply the resulting delta to all other shape keys.
@@ -318,14 +235,6 @@ class MESH_OT_transfer_selected_to_basis_propagate(bpy.types.Operator):
         obj = context.active_object
         me = obj.data
         keys = me.shape_keys
-
-        if not keys or not keys.key_blocks:
-            self.report({'ERROR'}, "Object has no shape keys.")
-            return {'CANCELLED'}
-
-        if not keys.use_relative:
-            self.report({'ERROR'}, "Absolute shape keys are not supported.")
-            return {'CANCELLED'}
 
         basis_key = keys.key_blocks[0]
         active_key = obj.active_shape_key
@@ -388,12 +297,77 @@ class MESH_OT_transfer_selected_to_basis_propagate(bpy.types.Operator):
         return {'FINISHED'}
 
 
+# Blender bug
+workaround_keep_references = []
 
-class MESH_OT_copy_selected_to_new_shapekey(bpy.types.Operator):
-    """Copy selected verts from active shape key into a new shape key"""
-    bl_idname = "mesh.copy_selected_to_new_shapekey"
-    bl_label = "Copy Selected to New Shape Key"
+
+def shape_key_items(self, context):
+    obj = context.active_object
+    if not obj or obj.type != 'MESH':
+        return []
+    me = obj.data
+    keys = getattr(me, "shape_keys", None)
+    if not keys or not keys.key_blocks:
+        return []
+
+    active_index = obj.active_shape_key_index
+
+    items = []
+    workaround_keep_references.clear()
+
+    for i, kb in enumerate(keys.key_blocks):
+        if i == active_index:
+            continue  # exclude currently active shape key
+        entry = (kb.name, kb.name, '')
+        workaround_keep_references.append(entry)
+        items.append(entry)
+
+    return items
+
+
+class MESH_OT_transfer_selected_shapekey(Operator):
+    """
+    Copy selected vertices from the active shape key into another.
+    """
+
+    bl_idname = "mesh.transfer_selected_shapekey"
+    bl_label = "Transfer Selected Vertices..."
+    bl_description = "Copy/Move selected vertices from the active shape key into a chosen shape key"
     bl_options = {'REGISTER', 'UNDO'}
+
+    target_key: EnumProperty(
+        name="Existing",
+        description="Choose the shape key to copy into",
+        items=shape_key_items
+    )
+
+    copy_mode: EnumProperty(
+        name="Copy Mode",
+        description="Choose how to copy selected vertices",
+        items=[
+            ('TARGET', "Existing", "Copy to a chosen existing shape key"),
+            ('ALL', "All", "Copy to all other shape keys"),
+            ('NEW', "New", "Copy to a new shape key"),
+        ],
+        default='TARGET'
+    )
+
+    copy_behavior: EnumProperty(
+        name="Behavior",
+        description="Copy or move selected vertices",
+        items=[
+            ('COPY', "Copy", "Copy vertices into target key"),
+            ('MOVE', "Move", "Copy and then reset vertices in the source key"),
+        ],
+        default='COPY'
+    )
+
+    new_key_name: StringProperty(
+        name="Name",
+        description="Name for the new shape key",
+        default=""
+    )
+
 
     @classmethod
     def poll(cls, context):
@@ -402,23 +376,183 @@ class MESH_OT_copy_selected_to_new_shapekey(bpy.types.Operator):
             return False
         if context.mode != 'EDIT_MESH':
             return False
-        keys = getattr(obj.data, "shape_keys", None)
-        return bool(keys and keys.key_blocks and obj.active_shape_key_index != 0)
+
+        me = obj.data
+        keys = getattr(me, "shape_keys", None)
+        if not keys or not keys.key_blocks:
+            return False
+
+        # Must be relative mode
+        if not keys.use_relative:
+            return False
+        return True
+
+    def draw(self, context):
+        layout = self.layout
+        layout.prop(self, "copy_mode", expand=True)
+
+        if self.copy_mode == 'TARGET':
+            layout.prop(self, "target_key")
+
+        elif self.copy_mode == 'NEW':
+            # Prepopulate if empty
+            if not self.new_key_name:
+                self.new_key_name = context.active_object.active_shape_key.name
+            layout.prop(self, "new_key_name")
+
+        layout.prop(self, "copy_behavior", expand=True)
+
+
+    def invoke(self, context, event):
+        self.new_key_name = context.active_object.active_shape_key.name
+        return context.window_manager.invoke_props_dialog(self, width=300)
+
 
     def execute(self, context):
-        return self._execute(context)
+        obj = context.active_object
+        me = obj.data
+        keys = me.shape_keys
+        bm = None
 
-    def _execute(self, context, do_copy=True):
+        original_src_name = obj.active_shape_key.name
+
+        if self.copy_mode == 'NEW':
+            result = self.copy_to_new_key(context)
+            if result == {'FINISHED'}:
+                bm = bmesh.from_edit_mesh(me)
+
+        elif self.copy_mode == 'ALL':
+            bm = bmesh.from_edit_mesh(me)
+            result = self.copy_to_all_keys(context, bm)
+
+        elif self.copy_mode == 'TARGET':
+            bm = bmesh.from_edit_mesh(me)
+            result = self.copy_to_existing(context, bm)
+
+        else:
+            return {'CANCELLED'}
+
+        if result != {'FINISHED'}:
+            return result
+
+        if self.copy_behavior == 'MOVE':
+            # Re-fetch because NEW mode may have changed the list
+            keys = obj.data.shape_keys
+            src_key = keys.key_blocks.get(original_src_name)
+            if not src_key:
+                self.report(
+                    {'ERROR'}, "Original source key not found after operation.")
+                return {'CANCELLED'}
+
+            src_index = keys.key_blocks.find(src_key.name)
+
+            # Determine reference key
+            ref_key = src_key.relative_key if src_key.relative_key else keys.key_blocks[0]
+            ref_index = keys.key_blocks.find(ref_key.name)
+
+            bm = bmesh.from_edit_mesh(me)
+
+            # Layers
+            src_layer = bm.verts.layers.shape[src_index]
+            ref_layer = bm.verts.layers.shape[ref_index]
+
+            # IMPORTANT RULE:
+            # If the source key is the active key → use v.co
+            source_is_active = (src_index == obj.active_shape_key_index)
+            if source_is_active:
+                for v in bm.verts:
+                    # Reset active key via v.co
+                    v.co = v[ref_layer]
+            else:
+                for v in bm.verts:
+                    # Reset non-active key via layer
+                    v[src_layer] = v[ref_layer].copy()
+
+            bmesh.update_edit_mesh(me, loop_triangles=False, destructive=False)
+
+            self.report(
+                {'INFO'},
+                f"Moved vertices: source key '{src_key.name}' reset to '{ref_key.name}'."
+            )
+
+        return result
+
+    def copy_to_existing(self, context, bm):
         obj = context.active_object
         me = obj.data
         keys = me.shape_keys
 
-        # Guard against absolute shape keys
-        if not keys.use_relative:
-            self.report({'ERROR'}, "Absolute shape keys are not supported.")
+        active_key = obj.active_shape_key
+        target_key = keys.key_blocks[self.target_key]
+
+
+        # Shape layers: find indices for active and target
+        try:
+            active_index = obj.active_shape_key_index
+            key_names = list(keys.key_blocks.keys())
+            target_index = key_names.index(self.target_key)
+        except Exception:
+            self.report({'ERROR'}, "Failed to determine shape key indices.")
             return {'CANCELLED'}
 
-        # Remember old active key and its relative
+        active_layer = bm.verts.layers.shape[active_index]
+        target_layer = bm.verts.layers.shape[target_index]
+
+        selected = 0
+        copied = 0
+
+        for v in bm.verts:
+            if v.select:
+                selected += 1
+                src = v[active_layer]
+                dst = v[target_layer]
+                if dst != src:
+                    v[target_layer] = src.copy()
+                    copied += 1
+
+        if selected == 0:
+            self.report({'WARNING'}, "No selected vertices.")
+            return {'CANCELLED'}
+
+        self.report(
+            {'INFO'},
+            f"Copied {copied} vertices from '{active_key.name}' to '{target_key.name}'."
+        )
+        return {'FINISHED'}
+
+    def copy_to_all_keys(self, context, bm):
+        obj = context.active_object
+        me = obj.data
+        keys = me.shape_keys
+        active_index = obj.active_shape_key_index
+        active_layer = bm.verts.layers.shape[active_index]
+
+        copied_total = 0
+
+        for i, kb in enumerate(keys.key_blocks):
+            if i == active_index:
+                continue
+
+            target_layer = bm.verts.layers.shape[i]
+            copied = 0
+
+            for v in bm.verts:
+                # possible optimization: collect selected first
+                if v.select:
+                    v[target_layer] = v[active_layer].copy()
+                    copied += 1
+
+            copied_total += copied
+
+        self.report(
+            {'INFO'}, f"Copied to all other shape keys ({copied_total} vertices total).")
+        return {'FINISHED'}
+
+    def copy_to_new_key(self, context):
+        obj = context.active_object
+        me = obj.data
+        keys = me.shape_keys
+
         src_key = obj.active_shape_key
         src_name = src_key.name
         rel_name = src_key.relative_key.name if src_key.relative_key else keys.key_blocks[
@@ -428,7 +562,7 @@ class MESH_OT_copy_selected_to_new_shapekey(bpy.types.Operator):
         bpy.ops.object.mode_set(mode='OBJECT')
 
         # Create new key (Blender auto-increments name if needed)
-        new_key = obj.shape_key_add(name=src_name)
+        new_key = obj.shape_key_add(name=self.new_key_name or src_name)
 
         # Make the new key active
         obj.active_shape_key_index = keys.key_blocks.find(new_key.name)
@@ -451,151 +585,24 @@ class MESH_OT_copy_selected_to_new_shapekey(bpy.types.Operator):
             if v.select:
                 v.co = v[src_layer]
                 copied += 1
-                if not do_copy:
-                    v[src_layer] = v[rel_layer]
             else:
                 v.co = v[rel_layer]
 
         if copied == 0:
-            # Switch to Object Mode to safely remove
             bpy.ops.object.mode_set(mode='OBJECT')
-
-            # Remove it
             bpy.ops.object.shape_key_remove(all=False)
             bpy.ops.object.mode_set(mode='EDIT')
-
-            self.report(
-                {'WARNING'}, "No selected vertices. Select some vertices in Edit Mode and try again.")
-            return {'CANCELLED'}
-
-        bmesh.update_edit_mesh(me, loop_triangles=False, destructive=False)
-
-        if do_copy:
-            self.report(
-                {'INFO'},
-                f"Copied {copied} selected vertices into new shape key '{new_key.name}'."
-            )
-        else:
-            self.report(
-                {'INFO'},
-                f"Split {copied} selected vertices into new shape key '{new_key.name}'."
-            )
-        return {'FINISHED'}
-
-
-class MESH_OT_move_selected_to_new_shapekey(MESH_OT_copy_selected_to_new_shapekey):
-    """Move selected verts from active shape key into a new shape key"""
-    bl_idname = "mesh.move_selected_to_new_shapekey"
-    bl_label = "Split Selected to New Shape Key"
-    bl_options = {'REGISTER', 'UNDO'}
-
-    def execute(self, context):
-        return self._execute(context, do_copy=False)
-
-
-class MESH_OT_copy_selected_to_muted_shapekey(bpy.types.Operator):
-    """
-    Copy selected vertices from the active shape key into the only muted shape key.
-    """
-
-    bl_idname = "mesh.copy_selected_to_muted_shapekey"
-    bl_label = "Copy Selected to Muted Shape Key"
-    bl_description = (
-        "Copy selected vertices from the active shape key into the only muted shape key"
-    )
-    bl_options = {'REGISTER', 'UNDO'}
-
-    @classmethod
-    def poll(cls, context):
-        obj = context.active_object
-        if not obj or obj.type != 'MESH':
-            return False
-        if context.mode != 'EDIT_MESH':
-            return False
-
-        me = obj.data
-        keys = getattr(me, "shape_keys", None)
-        if not keys or not keys.key_blocks:
-            return False
-
-        # Must have a non-Basis active key
-        if obj.active_shape_key_index == 0:
-            return False
-
-        # Must be relative mode
-        if not keys.use_relative:
-            return False
-
-        # Must have exactly one muted key
-        muted = [kb for kb in keys.key_blocks if kb.mute]
-        return len(muted) == 1
-
-    def execute(self, context):
-        obj = context.active_object
-        me = obj.data
-        keys = me.shape_keys
-
-        if not keys or not keys.key_blocks:
-            self.report({'ERROR'}, "Object has no shape keys.")
-            return {'CANCELLED'}
-
-        if not keys.use_relative:
-            self.report({'ERROR'}, "Absolute shape keys are not supported.")
-            return {'CANCELLED'}
-
-        active_key = obj.active_shape_key
-
-        if obj.active_shape_key_index == 0:
-            self.report(
-                {'ERROR'}, "Active key is Basis; nothing to copy from.")
-            return {'CANCELLED'}
-
-        # Determine target key (the only muted one)
-        muted_keys = [kb for kb in keys.key_blocks if kb.mute]
-        if len(muted_keys) != 1:
-            self.report({'ERROR'}, "Exactly one muted shape key is required.")
-            return {'CANCELLED'}
-
-        target_key = muted_keys[0]
-
-        # Get BMesh
-        bm = bmesh.from_edit_mesh(me)
-
-        # Shape layers
-        active_layer = bm.verts.layers.shape[obj.active_shape_key_index]
-        target_layer = bm.verts.layers.shape[keys.key_blocks.keys().index(
-            target_key.name)]
-
-        selected = 0
-        copied = 0
-
-        for v in bm.verts:
-            if v.select:
-                selected += 1
-                src = v[active_layer]
-                dst = v[target_layer]
-                if dst != src:
-                    v[target_layer] = src.copy()
-                    copied += 1
-
-        # Automatically unmute the target key after successful copy
-        if copied > 0:
-            target_key.mute = False
-
-        bmesh.update_edit_mesh(me, loop_triangles=False, destructive=False)
-
-        if selected == 0:
             self.report({'WARNING'}, "No selected vertices.")
             return {'CANCELLED'}
 
+        bmesh.update_edit_mesh(me, loop_triangles=False, destructive=False)
+
         self.report(
-            {'INFO'},
-            f"Copied {copied} vertices from '{active_key.name}' to '{target_key.name}'."
-        )
+            {'INFO'}, f"Created new shape key '{new_key.name}' with {copied} vertices copied.")
         return {'FINISHED'}
 
 
-class MESH_OT_normalize_active_shapekey_value(bpy.types.Operator):
+class MESH_OT_normalize_active_shapekey_value(Operator):
     """
     Normalize the active shape key so that its current visual shape becomes the new 1.0.
     The shape remains visually identical, but the key value is set to 1.
@@ -629,15 +636,6 @@ class MESH_OT_normalize_active_shapekey_value(bpy.types.Operator):
         keys = me.shape_keys
 
         active_key = obj.active_shape_key
-        active_index = obj.active_shape_key_index
-
-        if active_index == 0:
-            self.report({'ERROR'}, "Basis cannot be normalized.")
-            return {'CANCELLED'}
-
-        if not keys.use_relative:
-            self.report({'ERROR'}, "Absolute shape keys are not supported.")
-            return {'CANCELLED'}
 
         # Determine reference key
         reference = active_key.relative_key if active_key.relative_key else keys.key_blocks[0]
@@ -667,7 +665,7 @@ class MESH_OT_normalize_active_shapekey_value(bpy.types.Operator):
         return {'FINISHED'}
 
 
-class MESH_OT_zero_all_shapekey_values(bpy.types.Operator):
+class MESH_OT_zero_all_shapekey_values(Operator):
     """
     Set all shape key values of the active mesh object to 0.
     """
@@ -691,10 +689,6 @@ class MESH_OT_zero_all_shapekey_values(bpy.types.Operator):
     def execute(self, context):
         obj = context.active_object
         keys = obj.data.shape_keys
-
-        if not keys or not keys.key_blocks:
-            self.report({'ERROR'}, "Object has no shape keys.")
-            return {'CANCELLED'}
 
         for kb in keys.key_blocks:
             kb.value = 0.0
@@ -724,19 +718,10 @@ def shapekey_specials_menu(self, context):
         MESH_OT_reduce_selection_to_shapekey_differences.bl_idname,
         icon='SELECT_SUBTRACT')
     self.layout.operator(
-        MESH_OT_transfer_selected_to_basis.bl_idname,
-        icon='TRIA_DOWN')
-    self.layout.operator(
         MESH_OT_transfer_selected_to_basis_propagate.bl_idname,
         icon='MOD_ARRAY')
     self.layout.operator(
-        MESH_OT_copy_selected_to_new_shapekey.bl_idname,
-        icon='DUPLICATE')
-    self.layout.operator(
-        MESH_OT_move_selected_to_new_shapekey.bl_idname,
-        icon='SCULPTMODE_HLT')
-    self.layout.operator(
-        MESH_OT_copy_selected_to_muted_shapekey.bl_idname,
+        MESH_OT_transfer_selected_shapekey.bl_idname,
         icon='COPYDOWN'
     )
 
@@ -745,10 +730,7 @@ classes = (
     MESH_OT_reset_active_shapekey_to_reference,
     MESH_OT_reduce_selection_to_shapekey_differences,
     MESH_OT_select_shapekey_differences,
-    MESH_OT_transfer_selected_to_basis,
-    MESH_OT_move_selected_to_new_shapekey,
-    MESH_OT_copy_selected_to_new_shapekey,
-    MESH_OT_copy_selected_to_muted_shapekey,
+    MESH_OT_transfer_selected_shapekey,
     MESH_OT_transfer_selected_to_basis_propagate,
     MESH_OT_normalize_active_shapekey_value,
     MESH_OT_zero_all_shapekey_values

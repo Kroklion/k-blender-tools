@@ -201,11 +201,8 @@ Store and restore mesh selection states using custom element layers. Shows and H
   - Reset the active shape key to match its reference (Basis or relative key) for selected vertices.
   - Select vertices that differ from the reference shape.
   - Reduce current selection to only vertices that differ from the reference.
-  - Transfer selected vertices from the active shape key into the Basis.
   - Transfer selected vertices from the active shape key into the Basis, and update all other shape keys.
-  - Move selected verts from active shape key into a new shape key.
-  - Copy selected verts from active shape key into a new shape key.
-  - Copy selected vertices from the active shape key into the only muted shape key. Mute is used as a workaround to indicate the target shape key.
+  - Copy/Move selected vertices from the active shape key into specific/all/new shape key(s).
 - Object Mode:
   - Zero All Shape Key Values
   - Normalize Shape Key Value (will be 1 afterwards, shape stays the same)

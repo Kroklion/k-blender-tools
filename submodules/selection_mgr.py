@@ -30,7 +30,7 @@ bl_info = {
 
 # Prefix used for custom layers
 LAYER_PREFIX = "__SSM__"  # Selection States Manager prefix
-MODE_TOKEN = "::mode="
+SEPARATOR = "::"
 
 
 # ---------- Utilities ----------
@@ -44,13 +44,13 @@ def get_bmesh_and_mesh(context):
     return bm, me
 
 
-def encode_layer_name(user_name: str, mode: str) -> tuple[str, str, str]:
+def encode_layer_name(user_name: str) -> tuple[str, str, str]:
     # base name, without domain suffix
-    safe_name = user_name.replace("::", "_")
+    safe_name = user_name.replace(SEPARATOR, "_")
     return (
-        f"{LAYER_PREFIX}{safe_name}{MODE_TOKEN}{mode}_v",
-        f"{LAYER_PREFIX}{safe_name}{MODE_TOKEN}{mode}_e",
-        f"{LAYER_PREFIX}{safe_name}{MODE_TOKEN}{mode}_f"
+        f"{LAYER_PREFIX}{safe_name}{SEPARATOR}v",
+        f"{LAYER_PREFIX}{safe_name}{SEPARATOR}e",
+        f"{LAYER_PREFIX}{safe_name}{SEPARATOR}f"
     )
 
 
@@ -204,7 +204,7 @@ class SSM_OT_add_selection(Operator):
         ssm_item.mode = mode
 
         # Store selection on all element types
-        layer_names = encode_layer_name(self.name, mode)
+        layer_names = encode_layer_name(self.name)
         v_layer, e_layer, f_layer = ensure_int_layer(bm, layer_names)
 
         for v in bm.verts:

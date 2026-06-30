@@ -462,11 +462,13 @@ class MESH_OT_transfer_selected_shapekey(Operator):
             if source_is_active:
                 for v in bm.verts:
                     # Reset active key via v.co
-                    v.co = v[ref_layer]
+                    if v.select:
+                        v.co = v[ref_layer]
             else:
                 for v in bm.verts:
                     # Reset non-active key via layer
-                    v[src_layer] = v[ref_layer].copy()
+                    if v.select:
+                        v[src_layer] = v[ref_layer].copy()
 
             bmesh.update_edit_mesh(me, loop_triangles=False, destructive=False)
 

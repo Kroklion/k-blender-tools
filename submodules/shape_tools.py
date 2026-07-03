@@ -1,3 +1,4 @@
+from bpy.props import StringProperty, BoolProperty, FloatProperty
 from bpy.props import EnumProperty, StringProperty
 import bmesh
 import bpy
@@ -18,6 +19,8 @@ bl_info = {
         "- Copy/Move selected vertices from the active shape key into specific/all/new shape key(s).\n"
         "Object mode:\n"
         "- Normalize: Change the current shape key value to 1, keep the shape\n"
+        "- Zero all shape key values\n"
+        "- Bake shape key from viewport state\n"
     ),
     "warning": "",
     "doc_url": "",
@@ -604,7 +607,7 @@ class MESH_OT_transfer_selected_shapekey(Operator):
         return {'FINISHED'}
 
 
-class MESH_OT_normalize_active_shapekey_value(Operator):
+class OBJECT_OT_normalize_active_shapekey_value(Operator):
     """
     Normalize the active shape key so that its current visual shape becomes the new 1.0.
     The shape remains visually identical, but the key value is set to 1.
@@ -667,12 +670,12 @@ class MESH_OT_normalize_active_shapekey_value(Operator):
         return {'FINISHED'}
 
 
-class MESH_OT_zero_all_shapekey_values(Operator):
+class OBJECT_OT_zero_all_shapekey_values(Operator):
     """
     Set all shape key values of the active mesh object to 0.
     """
 
-    bl_idname = "mesh.zero_all_shapekey_values"
+    bl_idname = "object.zero_all_shapekey_values"
     bl_label = "Zero All Shape Key Values"
     bl_description = "Set all shape key values of the active object to 0"
     bl_options = {'REGISTER', 'UNDO'}
@@ -699,15 +702,208 @@ class MESH_OT_zero_all_shapekey_values(Operator):
         return {'FINISHED'}
 
 
+class OBJECT_OT_add_shape_key_from_viewport(Operator):
+    """Add a new shape key to all selected mesh objects using the current viewport geometry"""
+    bl_idname = "object.add_shape_key_from_viewport"
+    bl_label = "Add Shape Key From Viewport"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    name: StringProperty(
+        name="Shape Key Name",
+        description="Name for the new shape key (Blender will auto-increment if needed)",
+        default="NewShapeKey"
+    )
+
+    difference_threshold: FloatProperty(
+        name="Difference Threshold",
+        description="Minimum distance from Basis to consider a vertex different",
+        default=1e-5,
+        min=0.0,
+        soft_max=0.01
+    )
+
+    @classmethod
+    def poll(cls, context):
+        return context.mode == 'OBJECT'
+
+    def draw(self, context):
+        layout = self.layout
+        layout.prop(self, "name", expand=True)
+        layout.prop(self, "difference_threshold", expand=True)
+
+    def invoke(self, context, event):
+        self.new_key_name = "New Key"
+        return context.window_manager.invoke_props_dialog(self)
+
+    def execute(self, context):
+        # Ensure we operate in Object mode
+        prev_mode = context.mode
+        if prev_mode != 'OBJECT':
+            try:
+                bpy.ops.object.mode_set(mode='OBJECT')
+            except Exception:
+                self.report({'WARNING'}, "Could not switch to Object mode.")
+                return {'CANCELLED'}
+
+        depsgraph = context.evaluated_depsgraph_get()
+        selected = [o for o in context.selected_objects if o.type == 'MESH']
+
+        if not selected:
+            self.report({'WARNING'}, "No mesh objects selected.")
+            return {'CANCELLED'}
+
+        created = []
+        skipped = []
+        errors = []
+
+        # Optionally derive base name from active object's active shape key
+        base_name = self.name
+
+        for obj in selected:
+            try:
+                # Evaluate object with modifiers applied
+                eval_obj = obj.evaluated_get(depsgraph)
+
+                # Create a temporary mesh from the evaluated object
+                # API: to_mesh(preserve_all_data_layers=True, depsgraph=depsgraph)
+                try:
+                    temp_mesh = eval_obj.to_mesh(
+                        preserve_all_data_layers=True, depsgraph=depsgraph)
+                except TypeError:
+                    # Fallback for older API signatures
+                    temp_mesh = eval_obj.to_mesh()
+
+                if temp_mesh is None:
+                    errors.append(
+                        (obj.name, "Failed to obtain evaluated mesh."))
+                    continue
+
+                # Ensure the object has a mesh with same vertex count
+                src_vcount = len(temp_mesh.vertices)
+                dst_vcount = len(obj.data.vertices)
+
+                if src_vcount != dst_vcount:
+                    skipped.append(
+                        (obj.name, f"vertex count mismatch ({src_vcount} != {dst_vcount})"))
+                    # cleanup temp mesh
+                    try:
+                        if hasattr(eval_obj, "to_mesh_clear"):
+                            eval_obj.to_mesh_clear()
+                        else:
+                            bpy.data.meshes.remove(temp_mesh)
+                    except Exception:
+                        pass
+                    continue
+
+                # Ensure object has shape keys (adds Basis if needed)
+                if obj.data.shape_keys is None:
+                    # Add a basis key
+                    bpy.context.view_layer.objects.active = obj
+                    bpy.ops.object.shape_key_add(from_mix=False)
+
+                keys = obj.data.shape_keys
+
+                # Determine new key name (let Blender auto-increment if needed)
+                new_name = base_name
+
+                # Add new shape key (must be done in Object mode)
+                bpy.context.view_layer.objects.active = obj
+                new_key = obj.shape_key_add(name=new_name)
+
+                # Fill the new key's coordinates from the evaluated mesh
+                keys = obj.data.shape_keys
+                basis = keys.key_blocks[0]  # Basis is always index 0
+
+                kb = keys.key_blocks[new_key.name]
+                for i, v in enumerate(temp_mesh.vertices):
+                    basis_co = basis.data[i].co
+                    delta = v.co - basis_co
+
+                    if delta.length > self.difference_threshold:
+                        # Vertex is meaningfully different → store evaluated position
+                        kb.data[i].co = v.co
+                    else:
+                        # Vertex is effectively identical → snap to Basis
+                        kb.data[i].co = basis_co
+
+                created.append((obj.name, new_key.name))
+
+                # cleanup temp mesh
+                try:
+                    if hasattr(eval_obj, "to_mesh_clear"):
+                        eval_obj.to_mesh_clear()
+                    else:
+                        bpy.data.meshes.remove(temp_mesh)
+                except Exception:
+                    pass
+
+            except Exception as e:
+                errors.append((obj.name, str(e)))
+                # Attempt to cleanup temp mesh if present
+                try:
+                    if 'temp_mesh' in locals() and temp_mesh:
+                        if hasattr(eval_obj, "to_mesh_clear"):
+                            eval_obj.to_mesh_clear()
+                        else:
+                            bpy.data.meshes.remove(temp_mesh)
+                except Exception:
+                    pass
+                continue
+
+        # Restore previous mode
+        try:
+            if prev_mode != 'OBJECT':
+                bpy.ops.object.mode_set(mode=prev_mode)
+        except Exception:
+            pass
+
+        # Reporting
+        msg_lines = []
+        if created:
+            msg_lines.append("Created shape keys:")
+            for obj_name, key_name in created:
+                msg_lines.append(f"  {obj_name}: {key_name}")
+        if skipped:
+            msg_lines.append("Skipped objects:")
+            for obj_name, reason in skipped:
+                msg_lines.append(f"  {obj_name}: {reason}")
+        if errors:
+            msg_lines.append("Errors:")
+            for obj_name, err in errors:
+                msg_lines.append(f"  {obj_name}: {err}")
+
+        # Compose a short report
+        if created:
+            self.report(
+                {'INFO'}, f"Added shape keys to {len(created)} objects.")
+        elif skipped and not errors:
+            self.report(
+                {'WARNING'}, "No shape keys created; objects skipped due to vertex count mismatch.")
+        elif errors and not created:
+            self.report(
+                {'ERROR'}, "Failed to create shape keys; see console for details.")
+        else:
+            self.report({'INFO'}, "Operation completed.")
+
+        # Print detailed log to system console / Info area
+        for line in msg_lines:
+            print(line)
+
+        return {'FINISHED'}
 
 
 # Add entries to the Shape Key Specials menu
 def shapekey_specials_menu(self, context):
     self.layout.separator()
     self.layout.operator(
-        MESH_OT_zero_all_shapekey_values.bl_idname, icon='X')
+        OBJECT_OT_zero_all_shapekey_values.bl_idname, icon='X')
     self.layout.operator(
-        MESH_OT_normalize_active_shapekey_value.bl_idname, icon='NORMALIZE_FCURVES')
+        OBJECT_OT_normalize_active_shapekey_value.bl_idname, icon='NORMALIZE_FCURVES')
+    self.layout.operator(
+        OBJECT_OT_add_shape_key_from_viewport.bl_idname,
+        icon='OUTLINER_OB_MESH'
+    )
+    self.layout.separator()
     self.layout.operator(
         MESH_OT_reset_active_shapekey_to_reference.bl_idname,
         icon='LOOP_BACK',
@@ -734,8 +930,9 @@ classes = (
     MESH_OT_select_shapekey_differences,
     MESH_OT_transfer_selected_shapekey,
     MESH_OT_transfer_selected_to_basis_propagate,
-    MESH_OT_normalize_active_shapekey_value,
-    MESH_OT_zero_all_shapekey_values
+    OBJECT_OT_normalize_active_shapekey_value,
+    OBJECT_OT_zero_all_shapekey_values,
+    OBJECT_OT_add_shape_key_from_viewport
 )
 
 

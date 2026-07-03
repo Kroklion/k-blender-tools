@@ -206,6 +206,7 @@ Store and restore mesh selection states using custom element layers. Shows and H
 - Object Mode:
   - Zero All Shape Key Values
   - Normalize Shape Key Value (will be 1 afterwards, shape stays the same)
+  - Bake shape key from viewport state
 
 - Location:  
   - *Properties Editor > Object Data Properties (Mesh) > Shape Keys > 'Shape Key Specials' dropdown*  

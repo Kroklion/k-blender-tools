@@ -197,12 +197,16 @@ Store and restore mesh selection states using custom element layers. Shows and H
 
 ### `shape_tools.py`
 **Shape Key Tools**
-- Provides tools for working with shape keys in Edit Mode:
+- Provides tools for working with shape keys in Edit Mode. Access from 'Shape Keys Specials' dropdown:
   - Reset the active shape key to match its reference (Basis or relative key) for selected vertices.
   - Select vertices that differ from the reference shape.
   - Reduce current selection to only vertices that differ from the reference.
   - Transfer selected vertices from the active shape key into the Basis, and update all other shape keys.
   - Copy/Move selected vertices from the active shape key into specific/all/new shape key(s).
+  - Generate mirrored and combined variants from one given shape key.
+    - Shape key names: name.L, name.R, name.RL
+    - Select one key that is named such in Edit mode. The other two will be generated/overwritten.
+    - Uses topological mirroring. The mesh should be prepared with 'Topological Resymmetrization".
 - Object Mode:
   - Zero All Shape Key Values
   - Normalize Shape Key Value (will be 1 afterwards, shape stays the same)

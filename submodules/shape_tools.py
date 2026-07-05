@@ -1,3 +1,5 @@
+from ..lib.toposym import TopoSym, TopoSymType
+from mathutils import Vector
 from bpy.props import StringProperty, BoolProperty, FloatProperty
 from bpy.props import EnumProperty, StringProperty
 import bmesh
@@ -17,6 +19,7 @@ bl_info = {
         "- Reduce current selection to only vertices that differ from the reference.\n"
         "- Transfer selected vertices from the active shape key into the Basis, and update all other shape keys.\n"
         "- Copy/Move selected vertices from the active shape key into specific/all/new shape key(s).\n"
+        "- Generate mirrored and combined variants from one given shape key\n"
         "Object mode:\n"
         "- Normalize: Change the current shape key value to 1, keep the shape\n"
         "- Zero all shape key values\n"
@@ -892,6 +895,265 @@ class OBJECT_OT_add_shape_key_from_viewport(Operator):
         return {'FINISHED'}
 
 
+AXIS_DECODE = {
+    '-X': (0, -1),
+    'X': (0, 1),
+    '-Y': (1, -1),
+    'Y': (1, 1),
+    '-Z': (2, -1),
+    'Z': (2, 1),
+}
+
+
+class MESH_OT_shape_key_side_derive(bpy.types.Operator):
+    bl_idname = "mesh.topo_shapekey_derive"
+    bl_label = "Derive Side Shape Keys"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    axis: bpy.props.EnumProperty(
+        name="Local Axis",
+        items=[
+            ('-X', "-X to X", ""),
+            ('X', "X to -X", ""),
+            ('-Y', "-Y to Y", ""),
+            ('Y', "Y to -Y", ""),
+            ('-Z', "-Z to Z", ""),
+            ('Z', "Z to -Z", ""),
+        ],
+        default='-X'
+    )
+
+    eps: bpy.props.FloatProperty(
+        name="Center Epsilon",
+        default=1e-5,
+        min=0.0
+    )
+
+    # Only available in Edit mode
+    @classmethod
+    def poll(cls, context):
+        obj = context.active_object
+        return obj is not None and obj.type == 'MESH' and context.mode == 'EDIT_MESH'
+
+    def execute(self, context):
+        obj = context.active_object
+        if obj is None or obj.type != 'MESH':
+            self.report({'ERROR'}, "Active object must be a mesh")
+            return {'CANCELLED'}
+
+        bm = bmesh.from_edit_mesh(obj.data)
+        bm.verts.ensure_lookup_table()
+
+        # Determine active shape key index (if any)
+        keys = obj.data.shape_keys
+        if not keys or not keys.use_relative or not keys.key_blocks:
+            self.report(
+                {'ERROR'}, "Object must have relative shape keys and an active shape key")
+            bm.free()
+            return {'CANCELLED'}
+
+        active_index = obj.active_shape_key_index
+        if active_index < 0:
+            self.report({'ERROR'}, "No active shape key selected")
+            bm.free()
+            return {'CANCELLED'}
+
+        active_key = keys.key_blocks[active_index]
+        active_name = active_key.name
+
+        # decode axis and sign
+        axis_idx, side_sign = AXIS_DECODE[self.axis]
+
+        # Build TopoSym to get mapping
+        # Use key_index = active_index so TopoSym can consider it if needed
+        toposym = TopoSym(bm, axis_idx, side_sign, self.eps,
+                          active_index, -1, search_unreachable=False)
+        mapping = toposym.get_symmetry_mapping()  # dict: source -> target
+
+        # Prepare for shape key edits: must be in Object mode to add/modify shape keys
+        bpy.ops.object.mode_set(mode='OBJECT')
+
+        # Re-fetch keys after mode change
+        keys = obj.data.shape_keys
+        if not keys or not keys.use_relative or not keys.key_blocks:
+            self.report({'ERROR'}, "Shape keys unavailable after mode switch")
+            return {'CANCELLED'}
+
+        basis = keys.key_blocks[0]
+        n_verts = len(obj.data.vertices)
+
+        # Helper to ensure a key exists (create or overwrite)
+        def ensure_key(name):
+            kb = keys.key_blocks.get(name)
+            if kb is None:
+                kb = obj.shape_key_add(name=name, from_mix=False)
+            return kb
+
+        # Utility: read deltas from a source key relative to basis
+        def compute_deltas(key_block):
+            deltas = [Vector((0.0, 0.0, 0.0)) for _ in range(n_verts)]
+            for i in range(n_verts):
+                deltas[i] = key_block.data[i].co - basis.data[i].co
+            return deltas
+
+        # Utility: write deltas into a key block (overwrite)
+        def write_deltas(key_block, deltas):
+            for i in range(n_verts):
+                key_block.data[i].co = basis.data[i].co + deltas[i]
+
+        # Determine side of a vertex using basis position
+        def vertex_side(i):
+            coord = basis.data[i].co[axis_idx] * side_sign
+            if coord < -self.eps:
+                return 'L'
+            elif coord > self.eps:
+                return 'R'
+            else:
+                return 'C'  # center
+
+        # Parse active name suffix
+        suffix = None
+        base_name = active_name
+        for suf in ('.L', '.R', '.RL'):
+            if active_name.endswith(suf):
+                suffix = suf
+                base_name = active_name[:-len(suf)]
+                break
+
+        if suffix is None:
+            self.report(
+                {'ERROR'}, "Active shape key must end with .L, .R or .RL")
+            return {'CANCELLED'}
+
+        # Compute deltas of the active key
+        active_deltas = compute_deltas(active_key)
+
+        # Prepare zero deltas
+        zero_deltas = [Vector((0.0, 0.0, 0.0)) for _ in range(n_verts)]
+
+        # Helper to mirror a delta across the chosen axis
+        def mirror_delta(delta: Vector):
+            m = delta.copy()
+            m[axis_idx] *= -1.0
+            return m
+
+        # Build arrays for L, R, RL results
+        L_deltas = [Vector((0.0, 0.0, 0.0)) for _ in range(n_verts)]
+        R_deltas = [Vector((0.0, 0.0, 0.0)) for _ in range(n_verts)]
+        RL_deltas = [Vector((0.0, 0.0, 0.0)) for _ in range(n_verts)]
+
+        # Case: active is .L -> create/overwrite .R and .RL
+        if suffix == '.L':
+            # Fill L_deltas directly from active (source indices)
+            for s in range(n_verts):
+                L_deltas[s] = active_deltas[s]
+
+            # Mirror L into R using mapping
+            for s, t in mapping.items():
+                # s is source, t is target
+                mirrored = mirror_delta(L_deltas[s])
+                R_deltas[t] = mirrored
+
+            # RL is sum of both sides (L + R)
+            for i in range(n_verts):
+                RL_deltas[i] = L_deltas[i] + R_deltas[i]
+
+            # Ensure keys and write
+            key_R = ensure_key(f"{base_name}.R")
+            key_R.data.foreach_set("co", [c for v in [
+                                   basis.data[i].co + R_deltas[i] for i in range(n_verts)] for c in v])
+            key_R = keys.key_blocks[f"{base_name}.R"]  # re-fetch
+
+            key_RL = ensure_key(f"{base_name}.RL")
+            key_RL.data.foreach_set("co", [c for v in [
+                                    basis.data[i].co + RL_deltas[i] for i in range(n_verts)] for c in v])
+            key_RL = keys.key_blocks[f"{base_name}.RL"]
+
+            # Also ensure .L exists and matches active (overwrite)
+            key_L = ensure_key(f"{base_name}.L")
+            key_L.data.foreach_set("co", [c for v in [
+                                   basis.data[i].co + L_deltas[i] for i in range(n_verts)] for c in v])
+
+        # Case: active is .R -> create/overwrite .L and .RL
+        elif suffix == '.R':
+            # Fill R_deltas directly from active
+            for s in range(n_verts):
+                R_deltas[s] = active_deltas[s]
+
+            # Mirror R into L using mapping (reverse mapping: find source that maps to t)
+            # mapping is source->target, so for each source s mapping[s]=t, mirrored R at s goes to L at t
+            for s, t in mapping.items():
+                mirrored = mirror_delta(R_deltas[s])
+                L_deltas[t] = mirrored
+
+            # RL is sum
+            for i in range(n_verts):
+                RL_deltas[i] = L_deltas[i] + R_deltas[i]
+
+            # Write keys
+            key_L = ensure_key(f"{base_name}.L")
+            key_L.data.foreach_set("co", [c for v in [
+                                   basis.data[i].co + L_deltas[i] for i in range(n_verts)] for c in v])
+            key_L = keys.key_blocks[f"{base_name}.L"]
+
+            key_RL = ensure_key(f"{base_name}.RL")
+            key_RL.data.foreach_set("co", [c for v in [
+                                    basis.data[i].co + RL_deltas[i] for i in range(n_verts)] for c in v])
+            key_RL = keys.key_blocks[f"{base_name}.RL"]
+
+            key_R = ensure_key(f"{base_name}.R")
+            key_R.data.foreach_set("co", [c for v in [
+                                   basis.data[i].co + R_deltas[i] for i in range(n_verts)] for c in v])
+
+        # Case: active is .RL -> split into .L and .R (other side reset to reference)
+        else:  # suffix == '.RL'
+            # For RL active, we want to assign each side its side-only deltas.
+            # For each vertex i:
+            #  - if vertex is left: L gets RL_delta at i; R gets mirrored RL_delta at mapped counterpart
+            #  - if vertex is right: R gets RL_delta at i; L gets mirrored RL_delta at mapped counterpart
+            #  - center vertices: both reset to zero
+            for i in range(n_verts):
+                rl_delta = active_deltas[i]
+                side = vertex_side(i)
+                if side == 'L':
+                    L_deltas[i] = rl_delta
+                    # map to counterpart
+                    t = mapping.get(i)
+                    if t is not None:
+                        R_deltas[t] = mirror_delta(rl_delta)
+                elif side == 'R':
+                    R_deltas[i] = rl_delta
+                    t = mapping.get(i)
+                    if t is not None:
+                        L_deltas[t] = mirror_delta(rl_delta)
+                else:  # center
+                    L_deltas[i] = Vector((0.0, 0.0, 0.0))
+                    R_deltas[i] = Vector((0.0, 0.0, 0.0))
+
+            # Write L and R keys
+            key_L = ensure_key(f"{base_name}.L")
+            key_L.data.foreach_set("co", [c for v in [
+                                   basis.data[i].co + L_deltas[i] for i in range(n_verts)] for c in v])
+            key_R = ensure_key(f"{base_name}.R")
+            key_R.data.foreach_set("co", [c for v in [
+                                   basis.data[i].co + R_deltas[i] for i in range(n_verts)] for c in v])
+
+            # Optionally ensure RL remains as active (overwrite with original)
+            key_RL = keys.key_blocks.get(f"{base_name}.RL")
+            if key_RL is None:
+                key_RL = ensure_key(f"{base_name}.RL")
+            key_RL.data.foreach_set("co", [c for v in [
+                                    basis.data[i].co + active_deltas[i] for i in range(n_verts)] for c in v])
+
+        # Force updates
+        obj.data.update()
+        obj.update_tag()
+        bpy.context.view_layer.update()
+
+        self.report({'INFO'}, "Derived shape keys updated")
+        return {'FINISHED'}
+
+
 # Add entries to the Shape Key Specials menu
 def shapekey_specials_menu(self, context):
     self.layout.separator()
@@ -922,6 +1184,10 @@ def shapekey_specials_menu(self, context):
         MESH_OT_transfer_selected_shapekey.bl_idname,
         icon='COPYDOWN'
     )
+    self.layout.operator(
+        MESH_OT_shape_key_side_derive.bl_idname,
+        icon='SHAPEKEY_DATA'
+    )
 
 
 classes = (
@@ -932,7 +1198,8 @@ classes = (
     MESH_OT_transfer_selected_to_basis_propagate,
     OBJECT_OT_normalize_active_shapekey_value,
     OBJECT_OT_zero_all_shapekey_values,
-    OBJECT_OT_add_shape_key_from_viewport
+    OBJECT_OT_add_shape_key_from_viewport,
+    MESH_OT_shape_key_side_derive
 )
 
 

@@ -923,11 +923,30 @@ class MESH_OT_shape_key_side_derive(bpy.types.Operator):
         default='-X'
     )
 
-    eps: bpy.props.FloatProperty(
+    eps: FloatProperty(
         name="Center Epsilon",
         default=1e-5,
         min=0.0
     )
+
+    position_based_search: BoolProperty(
+        name="Position Based",
+        description="If checked, for disconnected mesh pieces a position based search is preformed, requires at lease one face to be symmetrized.",
+        default=False
+    )
+
+    def draw(self, context):
+        layout = self.layout
+
+        layout.prop(self, "axis")
+        layout.prop(self, "eps")
+        layout.separator()
+        layout.prop(self, "position_based_search")
+
+    # popup on execute since no undo panel in Properties area
+    def invoke(self, context, event):
+        return context.window_manager.invoke_props_dialog(self)
+
 
     # Only available in Edit mode
     @classmethod
@@ -967,7 +986,7 @@ class MESH_OT_shape_key_side_derive(bpy.types.Operator):
         # Build TopoSym to get mapping
         # Use key_index = active_index so TopoSym can consider it if needed
         toposym = TopoSym(bm, axis_idx, side_sign, self.eps,
-                          active_index, -1, search_unreachable=False)
+                          active_index, -1, search_unreachable=self.position_based_search)
         mapping = toposym.get_symmetry_mapping()  # dict: source -> target
 
         # Prepare for shape key edits: must be in Object mode to add/modify shape keys

@@ -108,7 +108,6 @@ class WEIGHTPAINT_OT_mask_grow(bpy.types.Operator):
     @classmethod
     def poll(cls, context):
         obj = context.object
-        print("poll")
         return context.mode == 'PAINT_WEIGHT' and obj and obj.type == 'MESH'
 
     def execute(self, context):

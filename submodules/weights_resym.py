@@ -34,14 +34,16 @@ AXIS_DECODE = {
 
 def find_mirror_name(name: str):
     pairs = [
-        (".L", ".R"), (".R", ".L"),
-        (".l", ".r"), (".r", ".l"),
-        (".left", ".right"), (".right", ".left"),
-        (".Left", ".Right"), (".Right", ".Left"),
+        (".L", ".R"),
+        (".l", ".r"),
+        (".left", ".right"),
+        (".Left", ".Right")
     ]
     for a, b in pairs:
         if name.endswith(a):
-            return name[:-len(a)], a, b
+            return name[:-len(a)], a, b, 1
+        elif name.endswith(b):
+            return name[:-len(b)], b, a, -1
     return None
 
 
@@ -175,16 +177,13 @@ class MESH_OT_topo_resymmetrize_weights(bpy.types.Operator):
                 resolved_groups.append((gname, gname))
                 continue
 
-            stem, sufA, sufB = base
+            stem, sufA, sufB, name_dir = base
 
-            if direction > 0:
-                # R → L
-                src_name = stem + sufB
-                tgt_name = stem + sufA
-            else:
-                # L → R
+            if direction == name_dir:
                 src_name = stem + sufA
                 tgt_name = stem + sufB
+            else:
+                continue
 
             # If source exists but target does not → skip entirely
             if src_name not in vgroups:
@@ -195,8 +194,6 @@ class MESH_OT_topo_resymmetrize_weights(bpy.types.Operator):
                 vgroups.new(name=tgt_name)
 
             resolved_groups.append((src_name, tgt_name))
-
-
 
 
         bm = bmesh.new()
@@ -212,33 +209,29 @@ class MESH_OT_topo_resymmetrize_weights(bpy.types.Operator):
         )
 
         # Collect mapping: source → target
-        mapping = toposym.get_symmetry_mapping()
+        mapping: dict[int, int] = toposym.get_symmetry_mapping()
+        centers: list[int] = toposym.get_center_verts()
         
         copied = 0
+
 
         for src_group, tgt_group in resolved_groups:
             vg_src = vgroups[src_group]
             vg_tgt = vgroups[tgt_group]
 
+            self_mirror = src_group == tgt_group
+
             for src, tgt in mapping.items():
+                copied += self.transfer_weight(vg_src, src, vg_tgt, tgt)
 
-                # read source weight
-                try:
-                    w = vg_src.weight(src)
-                except RuntimeError:
-                    w = 0.0
+                if not self_mirror:
+                    copied += self.transfer_weight(vg_src, tgt, vg_tgt, src)
 
-                # read old target weight
-                try:
-                    old = vg_tgt.weight(tgt)
-                except RuntimeError:
-                    old = 0.0
-
-                if w != old:
-                    copied += 1
-
-                # write mirrored weight
-                vg_tgt.add([tgt], w, 'REPLACE')
+                    for center_index in centers:
+                        copied += self.transfer_weight(
+                            vg_src, center_index,
+                            vg_tgt, center_index,
+                        )
 
 
         # Report summary
@@ -257,6 +250,25 @@ class MESH_OT_topo_resymmetrize_weights(bpy.types.Operator):
             bpy.ops.object.mode_set(mode=initial_mode)
 
         return {'FINISHED'}
+
+    def transfer_weight(self, vg_src, src_index: int, vg_tgt, tgt_index: int) -> int:
+        """Copy a single vertex weight. Returns 1 if the target changed."""
+
+        try:
+            weight = vg_src.weight(src_index)
+        except RuntimeError:
+            weight = 0.0
+
+        try:
+            old = vg_tgt.weight(tgt_index)
+        except RuntimeError:
+            old = 0.0
+
+        if weight != old:
+            vg_tgt.add([tgt_index], weight, 'REPLACE')
+            return int(1)
+        else:
+            return int(0)
 
 
 def menu_func(self, context):

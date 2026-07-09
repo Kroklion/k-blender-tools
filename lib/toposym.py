@@ -400,6 +400,14 @@ class TopoSym:
 
         return dict
 
+    def get_center_verts(self) -> list[int]:
+        result = []
+
+        for info in self._center_infos:
+            result.append(info.vert.index)
+
+        return result
+
     def select_in_bmesh(self, type: TopoSymType, deselect: bool = True):
         '''
         Selects the specified geometry classification.

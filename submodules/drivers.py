@@ -34,8 +34,12 @@ class MESH_OT_link_shape_key_drivers(bpy.types.Operator):
                     if not sk_target:
                         continue
 
-                    for key in sk_source.key_blocks:
+                    for index, key in enumerate(sk_source.key_blocks):
                         name = key.name
+
+                        # skip Basis
+                        if index == 0:
+                            continue
 
                         if name not in sk_target.key_blocks:
                             continue

@@ -895,33 +895,10 @@ class OBJECT_OT_add_shape_key_from_viewport(Operator):
         return {'FINISHED'}
 
 
-AXIS_DECODE = {
-    '-X': (0, -1),
-    'X': (0, 1),
-    '-Y': (1, -1),
-    'Y': (1, 1),
-    '-Z': (2, -1),
-    'Z': (2, 1),
-}
-
-
 class MESH_OT_shape_key_side_derive(bpy.types.Operator):
     bl_idname = "mesh.topo_shapekey_derive"
     bl_label = "Derive Side Shape Keys"
     bl_options = {'REGISTER', 'UNDO'}
-
-    axis: bpy.props.EnumProperty(
-        name="Local Axis",
-        items=[
-            ('-X', "-X to X", ""),
-            ('X', "X to -X", ""),
-            ('-Y', "-Y to Y", ""),
-            ('Y', "Y to -Y", ""),
-            ('-Z', "-Z to Z", ""),
-            ('Z', "Z to -Z", ""),
-        ],
-        default='-X'
-    )
 
     eps: FloatProperty(
         name="Center Epsilon",
@@ -980,14 +957,12 @@ class MESH_OT_shape_key_side_derive(bpy.types.Operator):
         active_key = keys.key_blocks[active_index]
         active_name = active_key.name
 
-        # decode axis and sign
-        axis_idx, side_sign = AXIS_DECODE[self.axis]
-
         # Build TopoSym to get mapping
         # Use key_index = active_index so TopoSym can consider it if needed
-        toposym = TopoSym(bm, axis_idx, side_sign, self.eps,
+        toposym = TopoSym(bm, 0, -1, self.eps,
                           active_index, -1, search_unreachable=self.position_based_search)
         mapping = toposym.get_symmetry_mapping()  # dict: source -> target
+        centers = toposym.get_center_verts()
 
         # Prepare for shape key edits: must be in Object mode to add/modify shape keys
         bpy.ops.object.mode_set(mode='OBJECT')
@@ -1008,28 +983,6 @@ class MESH_OT_shape_key_side_derive(bpy.types.Operator):
                 kb = obj.shape_key_add(name=name, from_mix=False)
             return kb
 
-        # Utility: read deltas from a source key relative to basis
-        def compute_deltas(key_block):
-            deltas = [Vector((0.0, 0.0, 0.0)) for _ in range(n_verts)]
-            for i in range(n_verts):
-                deltas[i] = key_block.data[i].co - basis.data[i].co
-            return deltas
-
-        # Utility: write deltas into a key block (overwrite)
-        def write_deltas(key_block, deltas):
-            for i in range(n_verts):
-                key_block.data[i].co = basis.data[i].co + deltas[i]
-
-        # Determine side of a vertex using basis position
-        def vertex_side(i):
-            coord = basis.data[i].co[axis_idx] * side_sign
-            if coord < -self.eps:
-                return 'L'
-            elif coord > self.eps:
-                return 'R'
-            else:
-                return 'C'  # center
-
         # Parse active name suffix
         suffix = None
         base_name = active_name
@@ -1044,125 +997,49 @@ class MESH_OT_shape_key_side_derive(bpy.types.Operator):
                 {'ERROR'}, "Active shape key must end with .L, .R or .RL")
             return {'CANCELLED'}
 
-        # Compute deltas of the active key
-        active_deltas = compute_deltas(active_key)
+        if suffix == '.L' or suffix == '.R':
+            key = ensure_key(f"{base_name}.RL")
 
-        # Prepare zero deltas
-        zero_deltas = [Vector((0.0, 0.0, 0.0)) for _ in range(n_verts)]
+            # src is right
+            for src, tgt in mapping.items():
+                key.data[src].co = active_key.data[src].co.copy()
+                key.data[tgt].co = active_key.data[src].co.copy()
+                key.data[tgt].co[0] *= -1
+            for vert in centers:
+                key.data[vert].co = active_key.data[vert].co.copy()
+                key.data[vert].co[0] = 0
 
-        # Helper to mirror a delta across the chosen axis
-        def mirror_delta(delta: Vector):
-            m = delta.copy()
-            m[axis_idx] *= -1.0
-            return m
+        if suffix == '.R':
+            key = ensure_key(f"{base_name}.L")
+            for src, tgt in mapping.items():
+                key.data[src].co = active_key.data[tgt].co.copy()
+                key.data[tgt].co = active_key.data[src].co.copy()
+                key.data[tgt].co[0] *= -1
+                key.data[src].co[0] *= -1
+            for vert in centers:
+                key.data[vert].co = active_key.data[vert].co.copy()
+                key.data[vert].co[0] *= -1
 
-        # Build arrays for L, R, RL results
-        L_deltas = [Vector((0.0, 0.0, 0.0)) for _ in range(n_verts)]
-        R_deltas = [Vector((0.0, 0.0, 0.0)) for _ in range(n_verts)]
-        RL_deltas = [Vector((0.0, 0.0, 0.0)) for _ in range(n_verts)]
-
-        # Case: active is .L -> create/overwrite .R and .RL
         if suffix == '.L':
-            # Fill L_deltas directly from active (source indices)
-            for s in range(n_verts):
-                L_deltas[s] = active_deltas[s]
+            key = ensure_key(f"{base_name}.R")
+            for src, tgt in mapping.items():
+                key.data[tgt].co = active_key.data[src].co.copy()
+                key.data[src].co = active_key.data[tgt].co.copy()
+                key.data[src].co[0] *= -1
+                key.data[tgt].co[0] *= -1
+            for vert in centers:
+                key.data[vert].co = active_key.data[vert].co.copy()
+                key.data[vert].co[0] *= -1
 
-            # Mirror L into R using mapping
-            for s, t in mapping.items():
-                # s is source, t is target
-                mirrored = mirror_delta(L_deltas[s])
-                R_deltas[t] = mirrored
+        if suffix == '.RL':
+            keyL = ensure_key(f"{base_name}.L")
+            keyR = ensure_key(f"{base_name}.R")
+            for src, tgt in mapping.items():
+                keyL.data[tgt].co = active_key.data[tgt].co.copy()
+                keyL.data[src].co = active_key.data[src].co.copy()
+                keyR.data[tgt].co = active_key.data[src].co.copy()
+                keyR.data[src].co = active_key.data[tgt].co.copy()
 
-            # RL is sum of both sides (L + R)
-            for i in range(n_verts):
-                RL_deltas[i] = L_deltas[i] + R_deltas[i]
-
-            # Ensure keys and write
-            key_R = ensure_key(f"{base_name}.R")
-            key_R.data.foreach_set("co", [c for v in [
-                                   basis.data[i].co + R_deltas[i] for i in range(n_verts)] for c in v])
-            key_R = keys.key_blocks[f"{base_name}.R"]  # re-fetch
-
-            key_RL = ensure_key(f"{base_name}.RL")
-            key_RL.data.foreach_set("co", [c for v in [
-                                    basis.data[i].co + RL_deltas[i] for i in range(n_verts)] for c in v])
-            key_RL = keys.key_blocks[f"{base_name}.RL"]
-
-            # Also ensure .L exists and matches active (overwrite)
-            key_L = ensure_key(f"{base_name}.L")
-            key_L.data.foreach_set("co", [c for v in [
-                                   basis.data[i].co + L_deltas[i] for i in range(n_verts)] for c in v])
-
-        # Case: active is .R -> create/overwrite .L and .RL
-        elif suffix == '.R':
-            # Fill R_deltas directly from active
-            for s in range(n_verts):
-                R_deltas[s] = active_deltas[s]
-
-            # Mirror R into L using mapping (reverse mapping: find source that maps to t)
-            # mapping is source->target, so for each source s mapping[s]=t, mirrored R at s goes to L at t
-            for s, t in mapping.items():
-                mirrored = mirror_delta(R_deltas[s])
-                L_deltas[t] = mirrored
-
-            # RL is sum
-            for i in range(n_verts):
-                RL_deltas[i] = L_deltas[i] + R_deltas[i]
-
-            # Write keys
-            key_L = ensure_key(f"{base_name}.L")
-            key_L.data.foreach_set("co", [c for v in [
-                                   basis.data[i].co + L_deltas[i] for i in range(n_verts)] for c in v])
-            key_L = keys.key_blocks[f"{base_name}.L"]
-
-            key_RL = ensure_key(f"{base_name}.RL")
-            key_RL.data.foreach_set("co", [c for v in [
-                                    basis.data[i].co + RL_deltas[i] for i in range(n_verts)] for c in v])
-            key_RL = keys.key_blocks[f"{base_name}.RL"]
-
-            key_R = ensure_key(f"{base_name}.R")
-            key_R.data.foreach_set("co", [c for v in [
-                                   basis.data[i].co + R_deltas[i] for i in range(n_verts)] for c in v])
-
-        # Case: active is .RL -> split into .L and .R (other side reset to reference)
-        else:  # suffix == '.RL'
-            # For RL active, we want to assign each side its side-only deltas.
-            # For each vertex i:
-            #  - if vertex is left: L gets RL_delta at i; R gets mirrored RL_delta at mapped counterpart
-            #  - if vertex is right: R gets RL_delta at i; L gets mirrored RL_delta at mapped counterpart
-            #  - center vertices: both reset to zero
-            for i in range(n_verts):
-                rl_delta = active_deltas[i]
-                side = vertex_side(i)
-                if side == 'L':
-                    L_deltas[i] = rl_delta
-                    # map to counterpart
-                    t = mapping.get(i)
-                    if t is not None:
-                        R_deltas[t] = mirror_delta(rl_delta)
-                elif side == 'R':
-                    R_deltas[i] = rl_delta
-                    t = mapping.get(i)
-                    if t is not None:
-                        L_deltas[t] = mirror_delta(rl_delta)
-                else:  # center
-                    L_deltas[i] = Vector((0.0, 0.0, 0.0))
-                    R_deltas[i] = Vector((0.0, 0.0, 0.0))
-
-            # Write L and R keys
-            key_L = ensure_key(f"{base_name}.L")
-            key_L.data.foreach_set("co", [c for v in [
-                                   basis.data[i].co + L_deltas[i] for i in range(n_verts)] for c in v])
-            key_R = ensure_key(f"{base_name}.R")
-            key_R.data.foreach_set("co", [c for v in [
-                                   basis.data[i].co + R_deltas[i] for i in range(n_verts)] for c in v])
-
-            # Optionally ensure RL remains as active (overwrite with original)
-            key_RL = keys.key_blocks.get(f"{base_name}.RL")
-            if key_RL is None:
-                key_RL = ensure_key(f"{base_name}.RL")
-            key_RL.data.foreach_set("co", [c for v in [
-                                    basis.data[i].co + active_deltas[i] for i in range(n_verts)] for c in v])
 
         # Force updates
         obj.data.update()

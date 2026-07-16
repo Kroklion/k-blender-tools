@@ -227,11 +227,11 @@ class MESH_OT_topo_resymmetrize_weights(bpy.types.Operator):
                 if not self_mirror:
                     copied += self.transfer_weight(vg_src, tgt, vg_tgt, src)
 
-                    for center_index in centers:
-                        copied += self.transfer_weight(
-                            vg_src, center_index,
-                            vg_tgt, center_index,
-                        )
+        for center_index in centers:
+            copied += self.transfer_weight(
+                vg_src, center_index,
+                vg_tgt, center_index,
+            )
 
 
         # Report summary

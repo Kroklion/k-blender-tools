@@ -124,7 +124,8 @@ class PG_WPCheckProperties(PropertyGroup):
             ('SUB', "Subtract",  "weight - operand"),
             ('MUL', "Multiply",  "weight * operand"),
             ('DIV', "Divide",    "weight / operand"),
-            ('ASSIGN', "Assign", "weight = operand")
+            ('ASSIGN', "Assign", "weight = operand"),
+            ('THRESHOLD', "Threshold", "Set weight to 0 if it is below operand")
         ],
         default='ADD'
     )
@@ -682,27 +683,38 @@ class WPCheckMathButton(Operator):
 
             for v in verts:
                 # read existing weight
+                present = False
                 w = 0.0
                 for g in v.groups:
                     if g.group == item.group_index:
                         w = g.weight
+                        present = True
                         break
 
-                # compute
-                if op == 'ADD':
-                    nw = w + operand
-                elif op == 'SUB':
-                    nw = w - operand
-                elif op == 'MUL':
-                    nw = w * operand
-                elif op == 'DIV':
-                    nw = w / operand if operand != 0 else w
-                else:  # ASSIGN
-                    nw = operand
+                if op == 'THRESHOLD':
+                    if present:
+                        nw = 0.0 if w < operand else w
 
-                # clamp [0,1]
-                nw = max(0.0, min(1.0, nw))
-                vg.add([v.index], nw, 'REPLACE')
+                        # clamp
+                        nw = max(0.0, min(1.0, nw))
+                        if nw != w:
+                            vg.add([v.index], nw, 'REPLACE')
+
+                else:
+                    if op == 'ADD':
+                        nw = w + operand
+                    elif op == 'SUB':
+                        nw = w - operand
+                    elif op == 'MUL':
+                        nw = w * operand
+                    elif op == 'DIV':
+                        nw = w / operand if operand != 0 else w
+                    elif op == 'ASSIGN':
+                        nw = operand
+
+                    # clamp [0,1]
+                    nw = max(0.0, min(1.0, nw))
+                    vg.add([v.index], nw, 'REPLACE')
 
         bpy.ops.object.mode_set(mode=mode)
         

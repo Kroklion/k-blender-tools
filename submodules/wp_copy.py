@@ -77,10 +77,9 @@ class WPSyncPanel(Panel):
 
 
 class WPSyncAssignIDs(Operator):
-    ''' Creates an attribute for vertices and assigns an unique number.'''
+    """Creates an attribute for vertices and assigns a unique number on active object."""
     bl_idname = "object.wpsync_assign_ids"
     bl_label = "add ID attribute to vertices"
-    
     attribute_name: bpy.props.StringProperty(
         name="ID Attribute",
         default="WPCPY_RID"
@@ -89,37 +88,59 @@ class WPSyncAssignIDs(Operator):
     @classmethod
     def poll(cls, context):
         obj = context.active_object
-        return obj is not None and\
-            obj.type == 'MESH' and\
-            obj.mode == 'OBJECT' and\
+        return (
+            obj is not None and
+            obj.type == 'MESH' and
+            obj.mode == 'OBJECT' and
             len(context.selected_objects) >= 1
+        )
 
     def execute(self, context):
         selected_meshes = [
             o for o in context.selected_objects if o.type == 'MESH']
-
-        count = 0
+        added_count = 0
+        deduplicated_count = 0
 
         for obj in selected_meshes:
             mesh = obj.data
-        
-            if not self.attribute_name in mesh.attributes:
+
+            # Ensure attribute exists
+            if self.attribute_name not in mesh.attributes:
                 mesh.attributes.new(self.attribute_name, 'FLOAT', 'POINT')
 
             attribute = mesh.attributes[self.attribute_name]
 
-            i = 1.0
-            for item in attribute.data:
-                if item.value == 0:
-                    value = random.uniform(1, 9) + i
-                    item.value = value
-                    count += 1
-                i = i + 10
+            # Collect existing IDs to detect duplicates
+            used_ids = set()
+            duplicates = []
+
+            # First pass: detect duplicates or zero values
+            for idx, item in enumerate(attribute.data):
+                val = item.value
+                if val == 0:
+                    added_count += 1
+
+                if val == 0 or val in used_ids:
+                    duplicates.append(idx)
+                    if val != 0:
+                        deduplicated_count += 1
+                else:
+                    used_ids.add(val)
+
+            # Second pass: assign new unique IDs
+            for idx in duplicates:
+                # Generate a unique random ID
+                new_id = random.uniform(1, 9)
+                while new_id in used_ids:
+                    new_id = random.uniform(1, 9)
+
+                attribute.data[idx].value = new_id
+                used_ids.add(new_id)
 
         self.report(
-            {'INFO'}, f"Assigned IDs to {count} vertices.")
-
+            {'INFO'}, f"Assigned {added_count}, deduplicated {deduplicated_count} vertex IDs.")
         return {'FINISHED'}
+
 
 
 class WPSyncCopyVGroupsFromIDs(bpy.types.Operator):

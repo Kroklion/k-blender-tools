@@ -195,6 +195,13 @@ class MESH_OT_topo_resymmetrize_weights(bpy.types.Operator):
 
             resolved_groups.append((src_name, tgt_name))
 
+        if not resolved_groups:
+            self.report(
+                {'WARNING'},
+                "No valid source/target vertex groups found. Not selected?"
+            )
+            bpy.ops.object.mode_set(mode=initial_mode)
+            return {'CANCELLED'}
 
         bm = bmesh.new()
         bm.from_mesh(obj.data)

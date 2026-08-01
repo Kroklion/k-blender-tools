@@ -587,9 +587,11 @@ class TopoSym:
 
         count = 0
         count_asym = 0
-        infos = self._vertex_infos
+        infos: list[VertexInfo] = self._vertex_infos
 
         for info in self._source_infos:
+            if info.vert.hide:
+                continue
             opp = [infos[n.index]
                    for n in info.neighbors() if infos[n.index].get_is_target()]
             # one target neighbor
@@ -726,6 +728,13 @@ class FaceInfo:
 
         # evaluate results
 
+        # hidden is not going to contribute
+        if hidden_count > 0 or face.hide:
+            self.is_hidden = True
+            self.is_sym_source = False
+            self.is_target = False
+            return
+
         # Target / Center
         if counts[VertexInfo.TGT] > 0 and counts[VertexInfo.SRC] == 0:
             self.is_target = True
@@ -740,12 +749,6 @@ class FaceInfo:
             # can be used for propagating only if a dual center edge is present
             if relations[VertexInfo.CEN] > 0:
                 self.is_initial_sym = True
-
-        # hidden is not going to contribute
-        elif hidden_count > 0 or face.hide:
-            self.is_hidden = True
-            self.is_target = False
-            return
 
         # Special symmetry case:
         #  c
@@ -949,6 +952,10 @@ class FaceInfo:
                         print(
                             f"edge: {se_edge.index}, ref: {self_vert_partners}, set0 {set0}, set1 {set1}")
                         continue
+
+            # skip hidden source side
+            if not next_source_side_face_info.is_sym_source:
+                continue
 
             # assert number of vertices is same
             v_count = len(next_face_info.face.loops)
